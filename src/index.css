@@ -1,0 +1,273 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ==========================================================================
+   LIMIAR — ORGANIC DARK TECH DESIGN TOKENS & THEME SYSTEM
+   ========================================================================== */
+
+:root {
+  /* Light Theme Tokens (Default when .dark is not active) */
+  --bg-canvas: #e6e4dc;
+  --bg-elevated: #efede6;
+  --bg-surface: rgba(255, 255, 255, 0.56);
+  --bg-surface-hover: rgba(255, 255, 255, 0.78);
+  --bg-glass: rgba(239, 237, 230, 0.68);
+  --bg-glass-strong: rgba(244, 242, 236, 0.88);
+  --bg-card-media: #dcd9d0;
+
+  --text-primary: #141516;
+  --text-secondary: #434648;
+  --text-muted: #686b6d;
+  --text-inverse: #e8e7e0;
+
+  --border-hairline: rgba(20, 21, 22, 0.11);
+  --border-strong: rgba(20, 21, 22, 0.22);
+  --shadow-glass: 0 12px 32px -12px rgba(20, 21, 22, 0.12);
+
+  /* Pastel Accents (Controlled 10% budget) */
+  --accent-acid: #7ea136;
+  --accent-uv: #8e72be;
+  --accent-uv-glow: rgba(142, 114, 190, 0.34);
+  --accent-uv-edge: rgba(142, 114, 190, 0.55);
+  --accent-terracotta: #b66c59;
+  --accent-mineral: #6e8b9b;
+
+  /* Ornament Tone */
+  --ornament-stroke: rgba(20, 21, 22, 0.14);
+  --ornament-accent-uv: rgba(142, 114, 190, 0.18);
+  --ornament-accent-acid: rgba(126, 161, 54, 0.15);
+  --grain-opacity: 0.035;
+}
+
+.dark {
+  /* Dark Theme Tokens */
+  --bg-canvas: #080909;
+  --bg-elevated: #111314;
+  --bg-surface: rgba(23, 25, 26, 0.64);
+  --bg-surface-hover: rgba(31, 34, 36, 0.78);
+  --bg-glass: rgba(17, 19, 20, 0.66);
+  --bg-glass-strong: rgba(14, 15, 16, 0.88);
+  --bg-card-media: #141516;
+
+  --text-primary: #e8e7e0;
+  --text-secondary: #b6b4ac;
+  --text-muted: #7f8182;
+  --text-inverse: #080909;
+
+  --border-hairline: rgba(232, 231, 224, 0.10);
+  --border-strong: rgba(232, 231, 224, 0.22);
+  --shadow-glass: 0 18px 42px -16px rgba(0, 0, 0, 0.72);
+
+  /* Pastel Accents */
+  --accent-acid: #a4c75a;
+  --accent-uv: #a18ac8;
+  --accent-uv-glow: rgba(161, 138, 200, 0.42);
+  --accent-uv-edge: rgba(161, 138, 200, 0.68);
+  --accent-terracotta: #b66c59;
+  --accent-mineral: #8ca6b4;
+
+  /* Ornament Tone */
+  --ornament-stroke: rgba(232, 231, 224, 0.12);
+  --ornament-accent-uv: rgba(161, 138, 200, 0.18);
+  --ornament-accent-acid: rgba(164, 199, 90, 0.14);
+  --grain-opacity: 0.045;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 280ms cubic-bezier(0.16, 1, 0.3, 1),
+      color 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  button:not(:disabled),
+  a[href] {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 1.5px solid var(--accent-uv);
+    outline-offset: 3px;
+  }
+}
+
+/* Analog Film Grain Overlay (compositor-safe, pointer-events none) */
+.limiar-grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Glassmorphism Surfaces */
+.glass-surface {
+  background-color: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-glass);
+  transition: background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.glass-surface-strong {
+  background-color: var(--bg-glass-strong);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid var(--border-hairline);
+  box-shadow: var(--shadow-glass);
+}
+
+.glass-card {
+  background-color: var(--bg-surface);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-hairline);
+  transition: border-color 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: var(--border-strong);
+  background-color: var(--bg-surface-hover);
+}
+
+/* Mouse-Follow Ultraviolet Glow Button */
+.uv-glow-btn {
+  --uv-x: 50%;
+  --uv-y: 50%;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background-color: var(--bg-surface);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-strong);
+  transition: border-color 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 200ms ease;
+}
+
+.uv-glow-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    110px circle at var(--uv-x) var(--uv-y),
+    var(--accent-uv-glow),
+    rgba(161, 138, 200, 0.08) 52%,
+    transparent 78%
+  );
+  transition: opacity 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.uv-glow-btn::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  z-index: -1;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    90px circle at var(--uv-x) var(--uv-y),
+    var(--accent-uv-edge),
+    transparent 70%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  transition: opacity 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.uv-glow-btn:hover::before,
+.uv-glow-btn:hover::after,
+.uv-glow-btn:focus-visible::before,
+.uv-glow-btn:focus-visible::after {
+  opacity: 1;
+}
+
+.uv-glow-arrow {
+  box-shadow: 0 0 14px -2px rgba(161, 138, 200, 0.25);
+  transition: box-shadow 260ms ease, transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.uv-glow-btn:hover .uv-glow-arrow {
+  box-shadow: 0 0 22px 1px var(--accent-uv-glow);
+  transform: translateX(2px);
+}
+
+/* Subtle Ambient Ornament Float (respects reduced motion) */
+@keyframes limiarFloat {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0.72;
+  }
+  50% {
+    transform: translate3d(0, -6px, 0) rotate(1.2deg);
+    opacity: 0.92;
+  }
+}
+
+.limiar-ambient-float {
+  animation: limiarFloat 14s ease-in-out infinite;
+}
+
+/* Entrance & Scroll Reveal Keyframes */
+@keyframes limiarBlurIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    filter: blur(0px);
+  }
+}
+
+.limiar-enter {
+  animation: limiarBlurIn 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .limiar-ambient-float,
+  .limiar-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+  .uv-glow-btn::before,
+  .uv-glow-btn::after {
+    transition: none;
+  }
+}

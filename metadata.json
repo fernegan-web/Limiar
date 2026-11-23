@@ -1,0 +1,8 @@
+{
+  "name": "Limiar — Underground Apparel",
+  "description": "Loja oficial da Limiar — streetwear underground e estética Organic Dark Tech com arquitetura preparada para Wix Headless.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
