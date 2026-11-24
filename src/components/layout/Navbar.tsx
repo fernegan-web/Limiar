@@ -95,7 +95,7 @@ export function Navbar({ onOpenSearch, onOpenAccount }: NavbarProps) {
               type="button"
               whileTap={{ scale: 0.92 }}
               onClick={onOpenAccount}
-              aria-label="Conta de visitante"
+              aria-label="Acessar conta"
               className="hidden sm:inline-flex items-center justify-center w-9 h-9 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
             >
               <User className="w-4 h-4" aria-hidden="true" />
@@ -197,7 +197,7 @@ export function Navbar({ onOpenSearch, onOpenAccount }: NavbarProps) {
                 className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-xs uppercase tracking-[0.18em] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-left"
               >
                 <User className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Conta de visitante</span>
+                <span>Minha conta</span>
               </button>
             </motion.nav>
           )}

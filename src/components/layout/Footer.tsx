@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useRouter } from '../../context/RouterContext';
+import { LIMIAR_CHANNELS } from '../../utils/whatsapp';
 import { LimiarLogo } from '../ui/LimiarLogo';
 import {
   CybersigilismDivider,
@@ -8,15 +9,10 @@ import {
 
 export function Footer() {
   const { navigate } = useRouter();
-  const [socialNotice, setSocialNotice] = useState<string | null>(null);
 
   const handleLink = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     e.preventDefault();
     navigate(href);
-  };
-
-  const handleSocialPlaceholder = (network: string) => {
-    setSocialNotice(`Canal oficial ${network} será vinculado antes da publicação final.`);
   };
 
   return (
@@ -72,7 +68,7 @@ export function Footer() {
             <ul className="space-y-2.5 text-sm text-[var(--text-secondary)]">
               <li>
                 <a href="/sobre" onClick={(e) => handleLink(e, '/sobre')} className="hover:text-[var(--text-primary)] transition-colors">
-                  Sobre a Limiar
+                  Sobre Limiar
                 </a>
               </li>
               <li>
@@ -83,14 +79,14 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Ajuda & Informações */}
+          {/* Informações */}
           <div className="lg:col-span-2 space-y-3">
             <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-[var(--text-primary)]">
               Informações
             </h2>
             <ul className="space-y-2.5 text-sm text-[var(--text-secondary)]">
               <li>
-                <a href="/sobre#arquitetura" onClick={(e) => handleLink(e, '/sobre')} className="hover:text-[var(--text-primary)] transition-colors">
+                <a href="/sobre" onClick={(e) => handleLink(e, '/sobre')} className="hover:text-[var(--text-primary)] transition-colors">
                   Envios e prazos
                 </a>
               </li>
@@ -102,29 +98,42 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Redes & Moon Phases */}
+          {/* CONECTE-SE & Moon Phases */}
           <div className="lg:col-span-2 flex flex-col justify-between gap-6">
             <div className="space-y-3">
               <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-[var(--text-primary)]">
-                Redes
+                CONECTE-SE
               </h2>
-              <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.14em] text-[var(--text-secondary)]">
-                {['Instagram', 'SoundCloud', 'YouTube'].map((network) => (
-                  <button
-                    key={network}
-                    type="button"
-                    onClick={() => handleSocialPlaceholder(network)}
+              <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
+                <li>
+                  <a
+                    href={LIMIAR_CHANNELS.instagramUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="hover:text-[var(--text-primary)] transition-colors underline decoration-[var(--border-hairline)] underline-offset-4"
                   >
-                    {network}
-                  </button>
-                ))}
-              </div>
-              {socialNotice && (
-                <p className="text-[11px] text-[var(--text-muted)] leading-snug">
-                  {socialNotice}
-                </p>
-              )}
+                    Instagram
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={LIMIAR_CHANNELS.whatsappBaseUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-[var(--text-primary)] transition-colors underline decoration-[var(--border-hairline)] underline-offset-4"
+                  >
+                    WhatsApp
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={`mailto:${LIMIAR_CHANNELS.email}`}
+                    className="hover:text-[var(--text-primary)] transition-colors underline decoration-[var(--border-hairline)] underline-offset-4"
+                  >
+                    E-mail
+                  </a>
+                </li>
+              </ul>
             </div>
             <MoonPhases className="w-28 h-auto text-[var(--text-secondary)] opacity-75" />
           </div>

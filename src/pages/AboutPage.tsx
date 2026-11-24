@@ -23,7 +23,7 @@ export function AboutPage() {
             <div className="limiar-enter flex items-center gap-3 text-[var(--text-muted)]" style={{ animationDelay: '50ms' }}>
               <EclipseSigil className="w-6 h-6 text-[var(--accent-uv)]" />
               <span className="text-[11px] uppercase tracking-[0.24em]">
-                Sobre a Limiar
+                Sobre Limiar
               </span>
             </div>
             <h1
@@ -126,13 +126,15 @@ export function AboutPage() {
           >
             <div className="space-y-1">
               <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
-                Explore o catálogo demonstrativo
+                Explore as coleções
               </p>
               <p className="text-sm text-[var(--text-secondary)]">
-                Conheça as peças e interações da Fase 01.
+                Peças autorais entre a cultura underground, a arte e a expressão individual.
               </p>
             </div>
-            <UltravioletButton href="/loja">EXPLORAR COLEÇÃO</UltravioletButton>
+            <UltravioletButton href="/loja" variant="primary">
+              EXPLORAR COLEÇÃO
+            </UltravioletButton>
           </div>
         </Reveal>
       </article>

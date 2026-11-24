@@ -28,14 +28,14 @@ export function CollectionsPage() {
             <div className="flex items-center gap-2.5 text-[var(--text-muted)]">
               <EclipseSigil className="w-5 h-5 text-[var(--accent-uv)]" />
               <p className="text-[11px] uppercase tracking-[0.22em]">
-                Coleções Demonstrativas · Curadoria Editorial
+                Curadoria Editorial
               </p>
             </div>
             <h1 className="font-display font-light text-3xl sm:text-5xl uppercase tracking-[0.03em] text-[var(--text-primary)]">
               COLEÇÕES
             </h1>
             <p className="text-sm sm:text-base text-[var(--text-secondary)] leading-relaxed">
-              Narrativas visuais e estudos de modelagem preparados para sincronização com as coleções oficiais do Wix Stores.
+              Narrativas visuais e estudos de modelagem que dão forma ao universo de Limiar.
             </p>
           </div>
 
@@ -80,7 +80,11 @@ export function CollectionsPage() {
                   </div>
 
                   <div>
-                    <UltravioletButton href={`/loja?colecao=${col.slug}`} size="md">
+                    <UltravioletButton
+                      href={`/loja?colecao=${col.slug}`}
+                      variant="secondary"
+                      size="md"
+                    >
                       Explorar peças
                     </UltravioletButton>
                   </div>

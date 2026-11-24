@@ -82,7 +82,7 @@ export function HomePage() {
     }
     setNewsletterError(null);
     setNewsletterNotice(
-      'E-mail validado. O cadastro definitivo será ativado após a integração oficial com o Wix.'
+      'Lista de lançamentos em preparação. Acompanhe novidades pelo Instagram @limiar.ritual ou WhatsApp.'
     );
   };
 
@@ -216,7 +216,7 @@ export function HomePage() {
                   Navegue por categorias
                 </span>
                 <span className="block text-xs text-[var(--text-muted)]">
-                  Estrutura demonstrativa preparada para sincronização Wix
+                  Explore por silhueta e categoria
                 </span>
               </div>
             </div>
@@ -299,7 +299,7 @@ export function HomePage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 py-8 border-y border-[var(--border-hairline)]">
             {[
               { icon: Truck, label: 'Envio para todo o Brasil' },
-              { icon: ShieldCheck, label: 'Checkout oficial via Wix' },
+              { icon: ShieldCheck, label: 'Compra segura' },
               { icon: RefreshCw, label: 'Troca facilitada' },
               { icon: Leaf, label: 'Produção consciente' },
               { icon: InfinityIcon, label: 'Cultura independente' },
@@ -368,7 +368,12 @@ export function HomePage() {
                     aria-invalid={Boolean(newsletterError)}
                     className="flex-1 bg-transparent px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
                   />
-                  <UltravioletButton type="submit" size="sm" className="justify-center sm:justify-between">
+                  <UltravioletButton
+                    type="submit"
+                    variant="secondary"
+                    size="sm"
+                    className="justify-center sm:justify-between"
+                  >
                     INSCREVER-SE
                   </UltravioletButton>
                 </div>

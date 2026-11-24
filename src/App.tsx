@@ -7,7 +7,8 @@ import { Navbar } from './components/layout/Navbar';
 import { PortalIntroOverlay } from './components/intro/PortalIntroOverlay';
 import { NeotribalGlobalBackground } from './components/ornaments/NeotribalGlobalBackground';
 import { OrbitalCursor } from './components/ui/OrbitalCursor';
-import { CartProvider } from './context/CartContext';
+import { WhatsAppFloatingButton } from './components/ui/WhatsAppFloatingButton';
+import { CartProvider, useCart } from './context/CartContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { PortalRouteTransition } from './motion/PortalRouteTransition';
@@ -25,6 +26,7 @@ import { ProductDetailPage } from './pages/ProductDetailPage';
 function AppShell() {
   const { pathname, commitScroll } = useRouter();
   const { reducedMotion, markPortalRevealed } = useThresholdPointer();
+  const { isDrawerOpen } = useCart();
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [introActive, setIntroActive] = useState<boolean>(() => {
@@ -80,6 +82,7 @@ function AppShell() {
       <CartDrawer />
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
       <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)} />
+      <WhatsAppFloatingButton hidden={searchOpen || accountOpen || isDrawerOpen} />
       <OrbitalCursor />
       {introActive && !reducedMotion && (
         <PortalIntroOverlay

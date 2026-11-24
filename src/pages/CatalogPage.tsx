@@ -61,7 +61,7 @@ export function CatalogPage() {
       setCategories(cats);
       setCollections(cols);
     } catch {
-      setError('Não foi possível carregar o catálogo demonstrativo no momento.');
+      setError('Não foi possível carregar o catálogo no momento.');
     } finally {
       setLoading(false);
     }
@@ -95,14 +95,14 @@ export function CatalogPage() {
             <div className="flex items-center gap-2.5 text-[var(--text-muted)]">
               <EclipseSigil className="w-5 h-5 text-[var(--accent-uv)]" />
               <p className="text-[11px] uppercase tracking-[0.22em]">
-                Catálogo Demonstrativo · Preparado para Wix Catalog V3
+                Curadoria · Streetwear Underground
               </p>
             </div>
             <h1 className="font-display font-light text-3xl sm:text-5xl uppercase tracking-[0.03em] text-[var(--text-primary)]">
               LOJA
             </h1>
             <p className="text-sm sm:text-base text-[var(--text-secondary)]">
-              Explore a estrutura de filtros, ordenação e variantes enquanto o catálogo definitivo da loja Wix ainda não está vinculado.
+              Silhuetas amplas, tecidos encorpados e grafismos autorais concebidos para a travessia.
             </p>
           </div>
           <CybersigilismDivider className="hidden lg:block w-72 opacity-65" />
@@ -278,7 +278,7 @@ export function CatalogPage() {
               Nenhuma peça corresponde aos filtros aplicados.
             </p>
             <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">
-              Ajuste a busca, tamanho ou categoria para visualizar os itens disponíveis no catálogo demonstrativo.
+              Ajuste a busca, tamanho ou categoria para explorar outras peças disponíveis.
             </p>
             <button
               type="button"

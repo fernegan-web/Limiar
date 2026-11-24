@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, Check, ChevronDown, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, MessageCircle, Minus, Plus } from 'lucide-react';
 import {
   CybersigilismCorner,
   LimiarStar,
@@ -12,6 +12,7 @@ import { useCart } from '../context/CartContext';
 import { useRouter } from '../context/RouterContext';
 import { fetchProductBySlug } from '../services/catalogService';
 import type { Product, ProductVariant } from '../types/commerce';
+import { buildProductWhatsAppUrl } from '../utils/whatsapp';
 
 interface ProductDetailPageProps {
   slug: string;
@@ -67,9 +68,11 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
           Peça não encontrada
         </h1>
         <p className="text-sm text-[var(--text-muted)]">
-          O item solicitado não está disponível no catálogo demonstrativo atual.
+          Esta peça não está disponível no catálogo atual.
         </p>
-        <UltravioletButton href="/loja">Voltar à loja</UltravioletButton>
+        <UltravioletButton href="/loja" variant="secondary">
+          Voltar à loja
+        </UltravioletButton>
       </div>
     );
   }
@@ -80,6 +83,21 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
     setAddedFeedback(true);
     window.setTimeout(() => setAddedFeedback(false), 1800);
   };
+
+  const productPageUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/produto/${product.slug}`
+      : `/produto/${product.slug}`;
+
+  const variantSummary = selectedVariant
+    ? `Tam. ${selectedVariant.size} · ${selectedVariant.colorName}`
+    : undefined;
+
+  const whatsappBuyHref = buildProductWhatsAppUrl({
+    productName: product.name,
+    variantLabel: variantSummary,
+    productUrl: productPageUrl,
+  });
 
   return (
     <div className="relative overflow-hidden">
@@ -157,7 +175,7 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
           <div className="lg:col-span-5 glass-surface-strong rounded-[28px] p-6 sm:p-8 space-y-6 lg:sticky lg:top-24">
             <div className="space-y-2 border-b border-[var(--border-hairline)] pb-5">
               <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
-                {product.collectionName} · Item demonstrativo
+                {product.collectionName}
               </p>
               <h1 className="font-display font-light text-3xl sm:text-4xl uppercase tracking-[0.03em] text-[var(--text-primary)]">
                 {product.name}
@@ -180,9 +198,7 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
                 {selectedVariant && (
                   <span className="text-[var(--text-secondary)]">
                     {selectedVariant.colorName} ·{' '}
-                    {selectedVariant.inStock
-                      ? 'Disponível (demonstração)'
-                      : 'Indisponível'}
+                    {selectedVariant.inStock ? 'Disponível' : 'Indisponível'}
                   </span>
                 )}
               </div>
@@ -213,44 +229,59 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
               </div>
             </div>
 
-            {/* Quantidade + CTA */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
-              <div className="inline-flex items-center justify-between rounded-full border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/55 px-2 h-12 sm:w-32">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  aria-label="Diminuir quantidade"
-                  className="w-8 h-8 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            {/* Quantidade + CTAs */}
+            <div className="space-y-3 pt-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="inline-flex items-center justify-between rounded-full border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/55 px-2 h-12 sm:w-32">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    aria-label="Diminuir quantidade"
+                    className="w-8 h-8 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <Minus className="w-3.5 h-3.5" aria-hidden="true" />
+                  </button>
+                  <span className="text-sm font-medium tabular-nums text-[var(--text-primary)]">
+                    {quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => q + 1)}
+                    aria-label="Aumentar quantidade"
+                    className="w-8 h-8 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+
+                <UltravioletButton
+                  onClick={handleAddToCart}
+                  disabled={!selectedVariant || !selectedVariant.inStock}
+                  variant="primary"
+                  size="lg"
+                  className="flex-1"
                 >
-                  <Minus className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
-                <span className="text-sm font-medium tabular-nums text-[var(--text-primary)]">
-                  {quantity}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => q + 1)}
-                  aria-label="Aumentar quantidade"
-                  className="w-8 h-8 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
+                  {addedFeedback ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Check className="w-4 h-4" aria-hidden="true" />
+                      Adicionado ao carrinho
+                    </span>
+                  ) : (
+                    'ADICIONAR AO CARRINHO'
+                  )}
+                </UltravioletButton>
               </div>
 
               <UltravioletButton
-                onClick={handleAddToCart}
-                disabled={!selectedVariant || !selectedVariant.inStock}
-                size="lg"
-                className="flex-1"
+                href={whatsappBuyHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="secondary"
+                size="md"
+                icon={<MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />}
+                className="w-full"
               >
-                {addedFeedback ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[var(--accent-acid)]" aria-hidden="true" />
-                    Adicionado ao carrinho
-                  </span>
-                ) : (
-                  'ADICIONAR AO CARRINHO'
-                )}
+                Comprar pelo WhatsApp
               </UltravioletButton>
             </div>
 
@@ -260,8 +291,8 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
                 { title: 'Detalhes da peça', body: product.shortDescription },
                 { title: 'Composição e cuidados', body: `${product.composition} ${product.careInstructions}` },
                 {
-                  title: 'Envio e checkout Wix',
-                  body: 'Valores, frete e disponibilidade definitivos serão sincronizados diretamente com o catálogo oficial da loja Wix na Fase 02.',
+                  title: 'Envio e atendimento',
+                  body: 'Envios para todo o Brasil. Em caso de dúvida sobre modelagem, medidas ou disponibilidade, fale diretamente com nossa equipe pelo WhatsApp.',
                 },
               ].map((section) => (
                 <details

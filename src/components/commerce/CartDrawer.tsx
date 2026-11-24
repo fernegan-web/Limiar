@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Minus, Plus, ShoppingBag, Trash2, X, Lock } from 'lucide-react';
+import { MessageCircle, Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useRouter } from '../../context/RouterContext';
 import { THRESHOLD_DURATIONS, THRESHOLD_EASE, THRESHOLD_SPRING } from '../../motion/thresholdConfig';
 import { getWixIntegrationStatus } from '../../services/wix/wixClient';
 import { formatBRL } from '../../utils/validation';
+import { buildCartWhatsAppUrl } from '../../utils/whatsapp';
 import { ResilientImage } from '../ui/ResilientImage';
 import { UltravioletButton } from '../ui/UltravioletButton';
 
@@ -94,17 +95,18 @@ export function CartDrawer() {
                       Seu carrinho está vazio
                     </p>
                     <p className="text-sm text-[var(--text-muted)] max-w-xs">
-                      Explore as peças demonstrativas do catálogo para testar a experiência de seleção.
+                      Explore as peças da coleção para montar sua seleção.
                     </p>
                   </div>
                   <UltravioletButton
+                    variant="primary"
                     size="sm"
                     onClick={() => {
                       closeDrawer();
                       navigate('/loja');
                     }}
                   >
-                    Explorar loja
+                    Explorar coleção
                   </UltravioletButton>
                 </div>
               ) : (
@@ -200,12 +202,12 @@ export function CartDrawer() {
               )}
             </div>
 
-            {/* Footer / Wix Checkout Guard */}
+            {/* Footer / Checkout */}
             {items.length > 0 && (
               <div className="pt-5 border-t border-[var(--border-hairline)] space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                    Subtotal demonstrativo
+                    Subtotal
                   </span>
                   <span
                     data-testid="cart-subtotal"
@@ -218,27 +220,37 @@ export function CartDrawer() {
                 {!wixStatus.checkoutEnabled && (
                   <div className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-3.5 text-xs text-[var(--text-secondary)] space-y-1.5">
                     <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
-                      <Lock className="w-3.5 h-3.5 text-[var(--accent-uv)] shrink-0" aria-hidden="true" />
-                      <span>Área reservada para checkout oficial Wix</span>
+                      <MessageCircle className="w-3.5 h-3.5 text-[var(--accent-acid)] shrink-0" aria-hidden="true" />
+                      <span>Pedido direto pelo WhatsApp</span>
                     </div>
                     <p className="text-[var(--text-muted)] leading-relaxed">
-                      O carrinho demonstrativo valida seleção e quantidades. O pagamento e criação de pedido serão ativados na integração Wix Headless (Cart V2 / Checkout).
+                      Finalize sua seleção diretamente com nossa equipe pelo WhatsApp com os itens e tamanhos já organizados.
                     </p>
                   </div>
                 )}
 
                 <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    disabled={!wixStatus.checkoutEnabled}
-                    className="flex-1 py-3 px-4 rounded-full border border-[var(--border-strong)] text-xs uppercase tracking-[0.16em] font-medium text-[var(--text-muted)] bg-[var(--bg-surface)] disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    Checkout Wix indisponível
-                  </button>
+                  {wixStatus.checkoutEnabled ? (
+                    <UltravioletButton variant="primary" size="md" className="flex-1">
+                      Finalizar compra
+                    </UltravioletButton>
+                  ) : (
+                    <UltravioletButton
+                      href={buildCartWhatsAppUrl(items, formatBRL(subtotal))}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      variant="primary"
+                      size="md"
+                      icon={<MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />}
+                      className="flex-1"
+                    >
+                      Finalizar no WhatsApp
+                    </UltravioletButton>
+                  )}
                   <button
                     type="button"
                     onClick={clearCart}
-                    className="py-3 px-4 rounded-full border border-[var(--border-hairline)] text-xs uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    className="py-3 px-4 rounded-full border border-[var(--border-hairline)] text-xs uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
                   >
                     Limpar
                   </button>
