@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  GLOBAL_NEOTRIBAL_BG_MOTION,
   HERO_PARALLAX_LAYERS,
   clamp,
+  computeGlobalBgScrollTravel,
   computeLayerTransform,
   computeMagneticPull,
   computeNormalizedPointer,
@@ -47,6 +49,19 @@ test('computeLayerTransform produces distinct opposing and rotational vectors ac
   assert.equal(Math.abs(sigil.rotate) > 0 && Math.abs(sigil.rotate) <= 4, true);
   assert.equal(bh.rotate, 0);
   assert.equal(model.rotate, 0);
+});
+
+test('global neotribal background moves opposite to cursor with small amplitude and calculates scroll travel safely', () => {
+  const rightDown = computeLayerTransform(1, 1, GLOBAL_NEOTRIBAL_BG_MOTION);
+  assert.equal(rightDown.x, -10);
+  assert.equal(rightDown.y, -8);
+  assert.equal(rightDown.rotate, 0);
+
+  assert.equal(computeGlobalBgScrollTravel(3024, 900, 2160), 864);
+  assert.equal(computeGlobalBgScrollTravel(5826, 844, 608), 5218);
+  assert.equal(computeGlobalBgScrollTravel(1400, 900, 2160), -225);
+  assert.equal(computeGlobalBgScrollTravel(800, 900, 2160), 0);
+  assert.equal(computeGlobalBgScrollTravel(0, 900, 2160), 0);
 });
 
 test('computeScrollRatio handles zero scrollable height and clamps progress', () => {

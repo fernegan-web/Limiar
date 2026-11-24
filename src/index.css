@@ -50,6 +50,7 @@
   /* Coordinated Theme Transition Timing */
   --theme-duration: 520ms;
   --theme-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --orbital-cursor-color: #17191A;
 }
 
 .dark {
@@ -93,6 +94,7 @@
   --cursor-aura-edge: rgba(164, 199, 90, 0.035);
   --card-sheen: rgba(232, 231, 224, 0.08);
   --grain-opacity: 0.045;
+  --orbital-cursor-color: #E8E7E0;
 }
 
 @layer base {
@@ -436,12 +438,136 @@ html.theme-transitioning circle {
     transform: none !important;
     filter: none !important;
   }
-  .limiar-cursor-aura {
+  .limiar-cursor-aura,
+  .limiar-orbital-root {
     display: none !important;
   }
   .glass-card::before,
   .uv-glow-btn::before,
   .uv-glow-btn::after {
     transition: none;
+  }
+}
+
+/* ==========================================================================
+   ORBITAL MINIMALIST CUSTOM CURSOR
+   ========================================================================== */
+html.limiar-custom-cursor,
+html.limiar-custom-cursor * {
+  cursor: none !important;
+}
+
+html.limiar-custom-cursor input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="range"]),
+html.limiar-custom-cursor textarea,
+html.limiar-custom-cursor [contenteditable=""],
+html.limiar-custom-cursor [contenteditable="true"],
+html.limiar-custom-cursor [contenteditable="plaintext-only"] {
+  cursor: text !important;
+}
+
+.limiar-orbital-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.limiar-orbital-dot,
+.limiar-orbital-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.limiar-orbital-root[data-cursor-visible="true"][data-cursor-mode="default"] .limiar-orbital-dot,
+.limiar-orbital-root[data-cursor-visible="true"][data-cursor-mode="interactive"] .limiar-orbital-dot {
+  opacity: 1;
+}
+
+.limiar-orbital-root[data-cursor-visible="true"][data-cursor-mode="default"] .limiar-orbital-ring {
+  opacity: 0.82;
+}
+
+.limiar-orbital-root[data-cursor-visible="true"][data-cursor-mode="interactive"] .limiar-orbital-ring {
+  opacity: 1;
+}
+
+.limiar-orbital-root[data-cursor-mode="text"] .limiar-orbital-dot,
+.limiar-orbital-root[data-cursor-mode="text"] .limiar-orbital-ring {
+  opacity: 0;
+}
+
+.limiar-orbital-dot-core {
+  width: 4.5px;
+  height: 4.5px;
+  margin-left: -2.25px;
+  margin-top: -2.25px;
+  border-radius: 9999px;
+  background-color: var(--orbital-cursor-color);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), background-color 220ms ease;
+}
+
+.limiar-orbital-ring-shape {
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  border-radius: 9999px;
+  border: 1px solid var(--orbital-cursor-color);
+  transform: scale(1);
+  transition:
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 220ms ease,
+    box-shadow 260ms ease;
+}
+
+@keyframes limiarOrbitalRingCycle {
+  0%, 100% {
+    border-color: #A4C75A;
+    box-shadow: 0 0 11px rgba(164, 199, 90, 0.22);
+  }
+  50% {
+    border-color: #A18AC8;
+    box-shadow: 0 0 13px rgba(161, 138, 200, 0.26);
+  }
+}
+
+@keyframes limiarOrbitalDotCycle {
+  0%, 100% {
+    background-color: #A4C75A;
+  }
+  50% {
+    background-color: #A18AC8;
+  }
+}
+
+.limiar-orbital-root[data-cursor-mode="interactive"] .limiar-orbital-ring-shape {
+  transform: scale(1.46);
+  animation: limiarOrbitalRingCycle 2.2s ease-in-out infinite;
+}
+
+.limiar-orbital-root[data-cursor-mode="interactive"] .limiar-orbital-dot-core {
+  transform: scale(0.92);
+  animation: limiarOrbitalDotCycle 2.2s ease-in-out infinite;
+}
+
+.limiar-orbital-root[data-cursor-pressed="true"] .limiar-orbital-ring-shape {
+  transform: scale(0.64) !important;
+  transition-duration: 95ms;
+}
+
+.limiar-orbital-root[data-cursor-pressed="true"] .limiar-orbital-dot-core {
+  transform: scale(0.8);
+  transition-duration: 95ms;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .limiar-orbital-root {
+    display: none !important;
   }
 }

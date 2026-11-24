@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, Check, ChevronDown, Minus, Plus } from 'lucide-react';
 import {
   CybersigilismCorner,
-  CybersigilismWeb,
   LimiarStar,
 } from '../components/ornaments/CybersigilismOrnaments';
 import { ResilientImage } from '../components/ui/ResilientImage';
@@ -84,11 +83,6 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
 
   return (
     <div className="relative overflow-hidden">
-      <CybersigilismWeb
-        tone="uv"
-        className="absolute -top-24 -right-24 w-[420px] h-[420px] opacity-40"
-      />
-
       <div className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-8 pb-20 space-y-8">
         {/* Navegação / Breadcrumb */}
         <div className="flex items-center justify-between gap-4 text-xs text-[var(--text-muted)]">

@@ -110,6 +110,34 @@ export const HERO_PARALLAX_LAYERS = {
   },
 } as const satisfies Record<string, HeroLayerMotionConfig>;
 
+export const GLOBAL_NEOTRIBAL_BG_MOTION: HeroLayerMotionConfig = {
+  depthX: -10,
+  depthY: -8,
+  maxRotateDeg: 0,
+  spring: { stiffness: 46, damping: 24, mass: 1.45 },
+};
+
+/**
+ * Calcula o deslocamento vertical associado à rolagem para que a arte
+ * acompanhe toda a extensão da página (do hero ao rodapé) sem distorção.
+ */
+export function computeGlobalBgScrollTravel(
+  pageHeight: number,
+  viewportHeight: number,
+  imageHeight: number
+): number {
+  if (pageHeight <= 0 || viewportHeight <= 0 || imageHeight <= 0) return 0;
+  if (pageHeight <= viewportHeight) return 0;
+
+  if (pageHeight >= imageHeight) {
+    return Number((pageHeight - imageHeight).toFixed(2));
+  }
+
+  const maxScroll = pageHeight - viewportHeight;
+  const deficit = pageHeight - imageHeight;
+  return Number(clamp(deficit, -maxScroll * 0.45, 0).toFixed(2));
+}
+
 export function computeLayerTransform(
   nx: number,
   ny: number,

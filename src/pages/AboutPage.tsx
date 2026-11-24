@@ -3,7 +3,6 @@ import {
   CybersigilismCorner,
   CybersigilismDivider,
   CybersigilismSpine,
-  CybersigilismWeb,
   EclipseSigil,
   LimiarStar,
   PortalSingularity,
@@ -17,18 +16,6 @@ import { ThresholdParallaxLayer } from '../motion/ThresholdPrimitives';
 export function AboutPage() {
   return (
     <div className="relative overflow-hidden">
-      {/* Ornamentos Neotribais Ambientais */}
-      <ThresholdParallaxLayer depthX={-10} depthY={-7} className="pointer-events-none absolute inset-0">
-        <CybersigilismWeb
-          tone="uv"
-          className="limiar-ambient-float absolute -top-12 -right-24 w-[440px] h-[440px] opacity-65"
-        />
-        <CybersigilismWeb
-          tone="neutral"
-          className="absolute top-[42%] -left-28 w-[400px] h-[400px] opacity-45"
-        />
-      </ThresholdParallaxLayer>
-
       <article className="relative mx-auto max-w-[1220px] px-4 sm:px-8 pt-12 pb-24 space-y-16">
         {/* Cabeçalho Assimétrico com Singularidade */}
         <header className="grid grid-cols-1 lg:grid-cols-12 items-center gap-10">

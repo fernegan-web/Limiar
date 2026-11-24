@@ -4,6 +4,8 @@ import { CartDrawer } from './components/commerce/CartDrawer';
 import { SearchOverlay } from './components/commerce/SearchOverlay';
 import { Footer } from './components/layout/Footer';
 import { Navbar } from './components/layout/Navbar';
+import { NeotribalGlobalBackground } from './components/ornaments/NeotribalGlobalBackground';
+import { OrbitalCursor } from './components/ui/OrbitalCursor';
 import { CartProvider } from './context/CartContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -45,9 +47,11 @@ function AppShell() {
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+    <div className="relative min-h-screen flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)] overflow-x-clip">
       {/* Camadas atmosféricas discretas (adaptáveis aos dois temas) */}
       <div className="limiar-atmosphere" aria-hidden="true" />
+      {/* Camada neotribal interativa global */}
+      <NeotribalGlobalBackground />
       {/* Textura granulada analógica sutil */}
       <div className="limiar-grain" aria-hidden="true" />
 
@@ -67,6 +71,7 @@ function AppShell() {
       <CartDrawer />
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
       <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)} />
+      <OrbitalCursor />
     </div>
   );
 }

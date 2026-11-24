@@ -4,11 +4,9 @@ import { AlertCircle, Search, SlidersHorizontal, X } from 'lucide-react';
 import { ProductCard } from '../components/commerce/ProductCard';
 import {
   CybersigilismDivider,
-  CybersigilismWeb,
   EclipseSigil,
   PortalSingularity,
 } from '../components/ornaments/CybersigilismOrnaments';
-import { ThresholdParallaxLayer } from '../motion/ThresholdPrimitives';
 import { THRESHOLD_EASE } from '../motion/thresholdConfig';
 import { useRouter } from '../context/RouterContext';
 import { fetchCategories, fetchCollections, fetchProducts } from '../services/catalogService';
@@ -90,17 +88,6 @@ export function CatalogPage() {
 
   return (
     <div className="relative overflow-hidden">
-      <ThresholdParallaxLayer depthX={-8} depthY={-6} className="pointer-events-none absolute inset-0">
-        <CybersigilismWeb
-          tone="uv"
-          className="absolute -top-20 -right-24 w-[420px] h-[420px] opacity-55"
-        />
-        <CybersigilismWeb
-          tone="neutral"
-          className="absolute bottom-12 -left-28 w-[360px] h-[360px] opacity-40"
-        />
-      </ThresholdParallaxLayer>
-
       <div className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-10 pb-20 space-y-10">
         {/* Cabeçalho da Loja */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">

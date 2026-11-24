@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   CybersigilismCorner,
   CybersigilismDivider,
-  CybersigilismWeb,
   EclipseSigil,
   LimiarStar,
   PortalSingularity,
@@ -10,10 +9,7 @@ import {
 import { ResilientImage } from '../components/ui/ResilientImage';
 import { Reveal } from '../components/ui/Reveal';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
-import {
-  ThresholdParallaxLayer,
-  ThresholdScrollParallax,
-} from '../motion/ThresholdPrimitives';
+import { ThresholdScrollParallax } from '../motion/ThresholdPrimitives';
 import { fetchCollections } from '../services/catalogService';
 import type { Collection } from '../types/commerce';
 
@@ -26,17 +22,6 @@ export function CollectionsPage() {
 
   return (
     <div className="relative overflow-hidden">
-      <ThresholdParallaxLayer depthX={-9} depthY={-6} className="pointer-events-none absolute inset-0">
-        <CybersigilismWeb
-          tone="uv"
-          className="limiar-ambient-float absolute -top-16 -left-20 w-[420px] h-[420px] opacity-55"
-        />
-        <CybersigilismWeb
-          tone="neutral"
-          className="absolute bottom-10 -right-24 w-[380px] h-[380px] rotate-180 opacity-40"
-        />
-      </ThresholdParallaxLayer>
-
       <div className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-10 pb-20 space-y-12">
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-3 max-w-2xl">

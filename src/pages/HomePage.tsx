@@ -9,7 +9,6 @@ import {
   EclipseSigil,
   LimiarStar,
 } from '../components/ornaments/CybersigilismOrnaments';
-import { Ornaments } from '../components/ornaments/Ornaments';
 import { ResilientImage } from '../components/ui/ResilientImage';
 import { Reveal } from '../components/ui/Reveal';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
@@ -89,9 +88,6 @@ export function HomePage() {
 
   return (
     <div className="relative overflow-hidden">
-      {/* Ornamentos Neotribais / Cybersigilism nas extremidades do Hero */}
-      <Ornaments />
-
       {/* ================================================================
           SEÇÃO 1: HERO EDITORIAL
           ================================================================ */}
@@ -255,10 +251,6 @@ export function HomePage() {
           SEÇÃO 4: BANNER INSTITUCIONAL
           ================================================================ */}
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-10 sm:py-14">
-        <CybersigilismWeb
-          tone="neutral"
-          className="hidden lg:block absolute -left-32 top-1/2 -translate-y-1/2 w-80 h-80 opacity-45"
-        />
         <Reveal>
           <div className="relative overflow-hidden rounded-[28px] glass-card min-h-[360px] sm:min-h-[400px] flex items-center">
             {/* Imagem atmosférica de fundo com parallax no scroll */}

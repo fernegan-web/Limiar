@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Compass } from 'lucide-react';
 import {
   CybersigilismCorner,
-  CybersigilismWeb,
   EclipseSigil,
   PortalSingularity,
 } from '../components/ornaments/CybersigilismOrnaments';
@@ -44,15 +43,6 @@ export function ContactPage() {
 
   return (
     <div className="relative overflow-hidden">
-      <CybersigilismWeb
-        tone="mineral"
-        className="absolute -top-24 -right-20 w-[420px] h-[420px] opacity-45"
-      />
-      <CybersigilismWeb
-        tone="uv"
-        className="absolute bottom-0 -left-24 w-[360px] h-[360px] opacity-35"
-      />
-
       <div className="relative mx-auto max-w-[1180px] px-4 sm:px-8 pt-12 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start">
           <div className="lg:col-span-5 space-y-5">
