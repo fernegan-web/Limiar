@@ -66,15 +66,6 @@ export function PortalIntroOverlay({
       onCompleteRef.current();
     };
 
-    const reducedMql = window.matchMedia('(prefers-reduced-motion: reduce)');
-    if (reducedMql.matches) {
-      finishSafely();
-      return () => {
-        document.documentElement.style.overflow = prevHtmlOverflow;
-        document.body.style.overflow = prevBodyOverflow;
-      };
-    }
-
     const applyFrame = (elapsedMs: number) => {
       const f = computeIntroFrame(elapsedMs);
 
@@ -175,16 +166,10 @@ export function PortalIntroOverlay({
     rafId = window.requestAnimationFrame(step);
     const failsafeId = window.setTimeout(finishSafely, INTRO_FAILSAFE_MS);
 
-    const handleReducedChange = () => {
-      if (reducedMql.matches) finishSafely();
-    };
-    reducedMql.addEventListener?.('change', handleReducedChange);
-
     return () => {
       finished = true;
       if (rafId) window.cancelAnimationFrame(rafId);
       window.clearTimeout(failsafeId);
-      reducedMql.removeEventListener?.('change', handleReducedChange);
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
     };

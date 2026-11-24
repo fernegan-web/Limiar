@@ -3,7 +3,6 @@ import {
   MotionConfig,
   motion,
   useMotionValue,
-  useReducedMotion,
   useScroll,
   useSpring,
   type MotionValue,
@@ -29,11 +28,7 @@ export function useThresholdPointer(): ThresholdPointerContextValue {
 }
 
 export function ThresholdMotionProvider({ children }: { children: React.ReactNode }) {
-  const prefersReduced = Boolean(useReducedMotion());
-  const [portalRevealed, setPortalRevealed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  });
+  const [portalRevealed, setPortalRevealed] = useState(false);
   const markPortalRevealed = useCallback(() => {
     setPortalRevealed(true);
     if (typeof document !== 'undefined') {
@@ -43,12 +38,12 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const shouldHold = !prefersReduced && !portalRevealed;
+    const shouldHold = !portalRevealed;
     document.documentElement.classList.toggle('limiar-intro-holding', shouldHold);
     return () => {
       document.documentElement.classList.remove('limiar-intro-holding');
     };
-  }, [prefersReduced, portalRevealed]);
+  }, [portalRevealed]);
 
   const rawNx = useMotionValue(0);
   const rawNy = useMotionValue(0);
@@ -58,7 +53,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
   const auraRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || prefersReduced) {
+    if (typeof window === 'undefined') {
       rawNx.set(0);
       rawNy.set(0);
       return;
@@ -119,27 +114,25 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       window.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('mouseleave', handlePointerLeave);
     };
-  }, [prefersReduced, rawNx, rawNy]);
+  }, [rawNx, rawNy]);
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion="never">
       <ThresholdPointerContext.Provider
         value={{
           nx,
           ny,
-          reducedMotion: prefersReduced,
-          portalRevealed: prefersReduced || portalRevealed,
+          reducedMotion: false,
+          portalRevealed,
           markPortalRevealed,
         }}
       >
         {/* Iluminação atmosférica sutil que acompanha o cursor sem poluir o conteúdo */}
-        {!prefersReduced && (
-          <div
-            ref={auraRef}
-            aria-hidden="true"
-            className="limiar-cursor-aura"
-          />
-        )}
+        <div
+          ref={auraRef}
+          aria-hidden="true"
+          className="limiar-cursor-aura"
+        />
 
         {/* Barra de travessia de scroll discreta no topo absoluto */}
         <ThresholdScrollProgress />

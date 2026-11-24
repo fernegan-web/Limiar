@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, Compass, Infinity as InfinityIcon, Leaf, RefreshCw, ShieldCheck, Truck } from 'lucide-react';
 import { ProductCard } from '../components/commerce/ProductCard';
-import { HeroThresholdComposition } from '../components/hero/HeroThresholdComposition';
+import { HeroTraversalStage } from '../components/hero/HeroTraversalStage';
 import {
   CybersigilismCorner,
   CybersigilismDivider,
@@ -13,13 +13,14 @@ import { ResilientImage } from '../components/ui/ResilientImage';
 import { Reveal } from '../components/ui/Reveal';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
 import { useRouter } from '../context/RouterContext';
-import {
-  ThresholdMagnetic,
-  ThresholdScrollParallax,
-} from '../motion/ThresholdPrimitives';
+import { ThresholdScrollParallax } from '../motion/ThresholdPrimitives';
 import { DEMO_IMAGES } from '../data/demoCatalog';
-import { fetchCategories, fetchFeaturedProducts } from '../services/catalogService';
-import type { Category, Product } from '../types/commerce';
+import {
+  fetchCategories,
+  fetchCollections,
+  fetchFeaturedProducts,
+} from '../services/catalogService';
+import type { Category, Collection, Product } from '../types/commerce';
 import { validateEmail } from '../utils/validation';
 
 interface HeroSlide {
@@ -51,6 +52,7 @@ export function HomePage() {
   const { navigate } = useRouter();
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [activeSlideIndex] = useState(0);
 
   // Newsletter state
@@ -60,10 +62,15 @@ export function HomePage() {
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([fetchFeaturedProducts(), fetchCategories()]).then(([products, cats]) => {
+    Promise.all([
+      fetchFeaturedProducts(),
+      fetchCategories(),
+      fetchCollections(),
+    ]).then(([products, cats, cols]) => {
       if (!mounted) return;
       setFeaturedProducts(products);
       setCategories(cats);
+      setCollections(cols);
     });
     return () => {
       mounted = false;
@@ -71,6 +78,15 @@ export function HomePage() {
   }, []);
 
   const currentSlide = HERO_SLIDES[activeSlideIndex];
+
+  const handleScrollToAllProducts = useCallback(() => {
+    const target = document.getElementById('todos-os-produtos');
+    if (!target) return;
+    target.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  }, []);
 
   const handleNewsletterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,96 +103,36 @@ export function HomePage() {
   };
 
   return (
-    <div className="relative overflow-hidden">
+    <div className="relative overflow-x-clip">
       {/* ================================================================
-          SEÇÃO 1: HERO EDITORIAL
+          SEÇÃO 1–3: HERO PROCEDURAL + TRAVESSIA GRAVITACIONAL + COLEÇÕES
           ================================================================ */}
-      <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-6 pb-16 sm:pt-10 sm:pb-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-10 lg:gap-6">
-          {/* Coluna Esquerda: Texto & CTA */}
-          <div className="lg:col-span-6 xl:col-span-6 relative z-30 space-y-6 sm:space-y-8">
-            <p
-              className="limiar-enter text-[11px] sm:text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]"
-              style={{ animationDelay: '0ms' }}
-            >
-              {currentSlide.eyebrow}
-            </p>
+      <HeroTraversalStage
+        slide={currentSlide}
+        activeSlideIndex={activeSlideIndex}
+        totalSlides={HERO_SLIDES.length}
+        collections={collections}
+        onViewAllProducts={handleScrollToAllProducts}
+      />
 
-            <div
-              className="limiar-enter flex items-start gap-4"
-              style={{ animationDelay: '45ms' }}
-            >
-              <h1 className="font-display font-light text-4xl sm:text-6xl xl:text-[64px] leading-[1.03] tracking-[0.03em] text-[var(--text-primary)] uppercase text-balance max-w-xl">
-                {currentSlide.title}
-              </h1>
-              <LimiarStar className="w-7 h-7 sm:w-9 sm:h-9 text-[var(--text-secondary)] shrink-0 mt-2 opacity-80" />
-            </div>
-
-            <p
-              className="limiar-enter text-base sm:text-lg text-[var(--text-secondary)] max-w-md leading-relaxed"
-              style={{ animationDelay: '90ms' }}
-            >
-              {currentSlide.description}
-            </p>
-
-            <div
-              className="limiar-enter pt-1"
-              style={{ animationDelay: '135ms' }}
-            >
-              <ThresholdMagnetic maxPull={4}>
-                <UltravioletButton href={currentSlide.ctaHref} size="lg">
-                  {currentSlide.ctaLabel}
-                </UltravioletButton>
-              </ThresholdMagnetic>
-            </div>
-
-            {/* Indicador preparado para futuros slides */}
-            <div
-              className="limiar-enter pt-6 flex items-center gap-4 text-[11px] tracking-[0.2em] text-[var(--text-muted)] tabular-nums"
-              style={{ animationDelay: '180ms' }}
-            >
-              <span>0{activeSlideIndex + 1}</span>
-              <span className="w-16 h-[1px] bg-[var(--border-strong)] relative overflow-hidden">
-                <span className="absolute inset-y-0 left-0 w-full bg-[var(--text-primary)] opacity-75" />
-              </span>
-              <span>0{HERO_SLIDES.length}</span>
-            </div>
-          </div>
-
-          {/* Coluna Direita: Composição Tridimensional Oficial (Buraco Negro + Cybersigilism + Modelo) */}
-          <div className="lg:col-span-6 xl:col-span-6 relative flex items-end justify-center xl:pr-10">
-            <HeroThresholdComposition modelAlt={currentSlide.imageAlt} />
-
-            {/* Rail lateral discreto */}
-            <div
-              aria-hidden="true"
-              className="hidden xl:flex flex-col items-center gap-3 absolute right-0 top-1/2 -translate-y-1/2 z-30 text-[var(--text-muted)]"
-            >
-              <span className="w-[1px] h-10 bg-[var(--border-hairline)]" />
-              <EclipseSigil className="w-5 h-5 text-[var(--text-secondary)]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-primary)]" />
-              <span className="w-1 h-1 rounded-full bg-[var(--border-strong)]" />
-              <span className="w-[1px] h-10 bg-[var(--border-hairline)]" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Divisor Neotribal Sutil entre Hero e Destaque */}
-      <div className="mx-auto max-w-[1360px] px-4 sm:px-8">
+      {/* Divisor Neotribal Sutil entre Travessia e Todos os Produtos */}
+      <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-6">
         <CybersigilismDivider className="w-full max-w-2xl mx-auto opacity-75" />
       </div>
 
       {/* ================================================================
-          SEÇÃO 2: COLEÇÕES EM DESTAQUE (PRODUTOS)
+          SEÇÃO 4: TODOS OS PRODUTOS (DESTAQUES DO CATÁLOGO)
           ================================================================ */}
-      <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16">
+      <section
+        id="todos-os-produtos"
+        className="scroll-mt-24 relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16"
+      >
         <Reveal>
           <div className="flex items-center justify-between gap-4 mb-8">
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <LimiarStar className="w-4 h-4 text-[var(--accent-uv)] shrink-0 opacity-80" />
               <h2 className="font-display text-xs sm:text-[13px] uppercase tracking-[0.22em] font-medium text-[var(--text-primary)] whitespace-nowrap">
-                COLEÇÕES EM DESTAQUE
+                TODOS OS PRODUTOS
               </h2>
               <div className="hidden sm:block h-[1px] flex-1 bg-[var(--border-hairline)]" />
             </div>

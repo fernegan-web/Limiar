@@ -25,14 +25,11 @@ import { ProductDetailPage } from './pages/ProductDetailPage';
 
 function AppShell() {
   const { pathname, commitScroll } = useRouter();
-  const { reducedMotion, markPortalRevealed } = useThresholdPointer();
+  const { markPortalRevealed } = useThresholdPointer();
   const { isDrawerOpen } = useCart();
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [introActive, setIntroActive] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  });
+  const [introActive, setIntroActive] = useState(true);
 
   const renderPage = () => {
     if (pathname === '/' || pathname === '') {
@@ -84,7 +81,7 @@ function AppShell() {
       <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)} />
       <WhatsAppFloatingButton hidden={searchOpen || accountOpen || isDrawerOpen} />
       <OrbitalCursor />
-      {introActive && !reducedMotion && (
+      {introActive && (
         <PortalIntroOverlay
           onPortalOpen={markPortalRevealed}
           onComplete={() => {

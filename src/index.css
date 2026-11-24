@@ -517,34 +517,6 @@ html.limiar-intro-holding .limiar-enter {
   animation-play-state: paused !important;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  html.theme-transitioning,
-  html.theme-transitioning * {
-    transition-duration: 0ms !important;
-  }
-  .limiar-ambient-float,
-  .limiar-ambient-ring,
-  .limiar-blackhole-pulse,
-  .limiar-enter {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
-    filter: none !important;
-  }
-  .limiar-cursor-aura,
-  .limiar-orbital-root {
-    display: none !important;
-  }
-  .glass-card::before,
-  .uv-glow-btn::before,
-  .uv-glow-btn::after {
-    transition: none;
-  }
-}
-
 /* ==========================================================================
    ORBITAL MINIMALIST CUSTOM CURSOR
    ========================================================================== */
