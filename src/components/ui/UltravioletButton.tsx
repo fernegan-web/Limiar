@@ -10,6 +10,7 @@ interface UltravioletButtonProps {
   disabled?: boolean;
   showArrow?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  variant?: 'primary' | 'secondary';
   className?: string;
   ariaLabel?: string;
 }
@@ -22,6 +23,7 @@ export function UltravioletButton({
   disabled = false,
   showArrow = true,
   size = 'md',
+  variant = 'primary',
   className = '',
   ariaLabel,
 }: UltravioletButtonProps) {
@@ -53,7 +55,12 @@ export function UltravioletButton({
         ? 'px-6 py-3 text-xs tracking-[0.18em] gap-4'
         : 'px-5 py-2.5 text-xs tracking-[0.16em] gap-3';
 
-  const baseClasses = `uv-glow-btn group inline-flex items-center justify-between rounded-full uppercase font-medium whitespace-nowrap shrink-0 text-[var(--text-primary)] disabled:opacity-45 disabled:pointer-events-none ${sizeClasses} ${className}`;
+  const variantClasses =
+    variant === 'secondary'
+      ? 'border-[var(--border-hairline)] bg-[var(--bg-glass)]'
+      : 'border-[var(--border-strong)]';
+
+  const baseClasses = `uv-glow-btn group inline-flex items-center justify-between rounded-full uppercase font-medium whitespace-nowrap shrink-0 text-[var(--text-primary)] disabled:opacity-45 disabled:pointer-events-none ${sizeClasses} ${variantClasses} ${className}`;
 
   const arrowBadge = showArrow ? (
     <span className="uv-glow-arrow inline-flex items-center justify-center w-7 h-7 rounded-full border border-[var(--border-strong)] bg-[var(--bg-glass)] text-[var(--text-primary)] shrink-0">

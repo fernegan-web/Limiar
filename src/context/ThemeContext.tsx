@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -25,9 +25,24 @@ function resolveInitialTheme(): ThemeMode {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>(resolveInitialTheme);
+  const isFirstMount = useRef(true);
+  const transitionTimer = useRef<number | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!isFirstMount.current && !reducedMotion) {
+      root.classList.add('theme-transitioning');
+      if (transitionTimer.current) {
+        window.clearTimeout(transitionTimer.current);
+      }
+      transitionTimer.current = window.setTimeout(() => {
+        root.classList.remove('theme-transitioning');
+      }, 600);
+    }
+    isFirstMount.current = false;
+
     if (theme === 'dark') {
       root.classList.add('dark');
       root.classList.remove('light');
@@ -36,12 +51,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.remove('dark');
     }
     root.style.colorScheme = theme;
+
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, theme);
     } catch {
       // ignore storage errors
     }
   }, [theme]);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimer.current) {
+        window.clearTimeout(transitionTimer.current);
+      }
+    };
+  }, []);
 
   const setTheme = (next: ThemeMode) => setThemeState(next);
   const toggleTheme = () => setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));

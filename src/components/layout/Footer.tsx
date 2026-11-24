@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useRouter } from '../../context/RouterContext';
 import { LimiarLogo } from '../ui/LimiarLogo';
-import { CybersigilismDivider, MoonPhases } from '../ornaments/CybersigilismOrnaments';
+import {
+  CybersigilismDivider,
+  CybersigilismWeb,
+  MoonPhases,
+} from '../ornaments/CybersigilismOrnaments';
 
 export function Footer() {
   const { navigate } = useRouter();
@@ -17,8 +21,16 @@ export function Footer() {
   };
 
   return (
-    <footer className="relative mt-24 border-t border-[var(--border-hairline)] bg-[var(--bg-elevated)]/45">
-      <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-14 pb-10">
+    <footer className="relative overflow-hidden mt-24 border-t border-[var(--border-hairline)] bg-[var(--bg-elevated)]/45">
+      <CybersigilismWeb
+        tone="neutral"
+        className="absolute -bottom-24 -left-20 w-[340px] h-[340px] opacity-35"
+      />
+      <CybersigilismWeb
+        tone="uv"
+        className="absolute -bottom-28 -right-24 w-[360px] h-[360px] rotate-180 opacity-30"
+      />
+      <div className="relative z-10 mx-auto max-w-[1360px] px-4 sm:px-8 pt-14 pb-10">
         <CybersigilismDivider className="w-full max-w-md mx-auto mb-12 opacity-65" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-10 pb-12">

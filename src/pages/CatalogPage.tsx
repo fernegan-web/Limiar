@@ -1,8 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { AlertCircle, Search, SlidersHorizontal, X } from 'lucide-react';
 import { ProductCard } from '../components/commerce/ProductCard';
-import { CybersigilismWeb } from '../components/ornaments/CybersigilismOrnaments';
-import { Reveal } from '../components/ui/Reveal';
+import {
+  CybersigilismDivider,
+  CybersigilismWeb,
+  EclipseSigil,
+  PortalSingularity,
+} from '../components/ornaments/CybersigilismOrnaments';
+import { ThresholdParallaxLayer } from '../motion/ThresholdPrimitives';
+import { THRESHOLD_EASE } from '../motion/thresholdConfig';
 import { useRouter } from '../context/RouterContext';
 import { fetchCategories, fetchCollections, fetchProducts } from '../services/catalogService';
 import type { Category, Collection, Product, ProductSize, SortOption } from '../types/commerce';
@@ -83,37 +90,49 @@ export function CatalogPage() {
 
   return (
     <div className="relative overflow-hidden">
-      <CybersigilismWeb
-        tone="neutral"
-        className="absolute -top-24 -right-24 w-96 h-96 opacity-40"
-      />
+      <ThresholdParallaxLayer depthX={-8} depthY={-6} className="pointer-events-none absolute inset-0">
+        <CybersigilismWeb
+          tone="uv"
+          className="absolute -top-20 -right-24 w-[420px] h-[420px] opacity-55"
+        />
+        <CybersigilismWeb
+          tone="neutral"
+          className="absolute bottom-12 -left-28 w-[360px] h-[360px] opacity-40"
+        />
+      </ThresholdParallaxLayer>
 
-      <div className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-10 pb-16 space-y-10">
+      <div className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-10 pb-20 space-y-10">
         {/* Cabeçalho da Loja */}
-        <header className="space-y-3 max-w-2xl">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
-            Catálogo Demonstrativo · Preparado para Wix Catalog V3
-          </p>
-          <h1 className="font-display font-light text-3xl sm:text-5xl uppercase tracking-[0.03em] text-[var(--text-primary)]">
-            LOJA
-          </h1>
-          <p className="text-sm sm:text-base text-[var(--text-secondary)]">
-            Explore a estrutura de filtros, ordenação e variantes enquanto o catálogo definitivo da loja Wix ainda não está vinculado.
-          </p>
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-3 max-w-2xl">
+            <div className="flex items-center gap-2.5 text-[var(--text-muted)]">
+              <EclipseSigil className="w-5 h-5 text-[var(--accent-uv)]" />
+              <p className="text-[11px] uppercase tracking-[0.22em]">
+                Catálogo Demonstrativo · Preparado para Wix Catalog V3
+              </p>
+            </div>
+            <h1 className="font-display font-light text-3xl sm:text-5xl uppercase tracking-[0.03em] text-[var(--text-primary)]">
+              LOJA
+            </h1>
+            <p className="text-sm sm:text-base text-[var(--text-secondary)]">
+              Explore a estrutura de filtros, ordenação e variantes enquanto o catálogo definitivo da loja Wix ainda não está vinculado.
+            </p>
+          </div>
+          <CybersigilismDivider className="hidden lg:block w-72 opacity-65" />
         </header>
 
-        {/* Barra de Filtros e Busca */}
-        <div className="glass-surface rounded-[22px] p-4 sm:p-5 space-y-4">
+        {/* Barra de Filtros e Busca (Tier 3 Glass) */}
+        <div className="glass-surface-strong rounded-[24px] p-4 sm:p-5 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             {/* Categorias */}
             <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por categoria">
               <button
                 type="button"
                 onClick={() => setCategory('todas')}
-                className={`px-3.5 py-1.5 rounded-full text-xs uppercase tracking-[0.14em] transition-colors whitespace-nowrap ${
+                className={`px-3.5 py-1.5 rounded-full text-xs uppercase tracking-[0.14em] transition-all whitespace-nowrap ${
                   category === 'todas'
                     ? 'bg-[var(--text-primary)] text-[var(--text-inverse)] font-medium'
-                    : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
                 }`}
               >
                 Todas
@@ -123,10 +142,10 @@ export function CatalogPage() {
                   key={cat.id}
                   type="button"
                   onClick={() => setCategory(cat.id)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs uppercase tracking-[0.14em] transition-colors whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs uppercase tracking-[0.14em] transition-all whitespace-nowrap ${
                     category === cat.id
                       ? 'bg-[var(--text-primary)] text-[var(--text-inverse)] font-medium'
-                      : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
                   }`}
                 >
                   {cat.name}
@@ -136,7 +155,7 @@ export function CatalogPage() {
 
             {/* Busca + Ordenação */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <div className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/55 min-w-[220px]">
+              <div className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/55 focus-within:border-[var(--accent-uv-edge)] min-w-[220px] transition-colors">
                 <Search className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" aria-hidden="true" />
                 <label htmlFor="catalog-search" className="sr-only">
                   Filtrar por nome
@@ -160,7 +179,7 @@ export function CatalogPage() {
                   id="catalog-sort"
                   value={sort}
                   onChange={(e) => setSort(e.target.value as SortOption)}
-                  className="rounded-full border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-3.5 py-2 text-xs text-[var(--text-primary)] focus:outline-none"
+                  className="rounded-full border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-3.5 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-uv-edge)] focus:outline-none"
                 >
                   <option value="featured">Destaques</option>
                   <option value="price-asc">Menor preço</option>
@@ -182,9 +201,9 @@ export function CatalogPage() {
                   key={sz}
                   type="button"
                   onClick={() => setSelectedSize((prev) => (prev === sz ? '' : sz))}
-                  className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+                  className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${
                     selectedSize === sz
-                      ? 'border border-[var(--accent-uv)] text-[var(--text-primary)] bg-[var(--accent-uv-glow)]'
+                      ? 'border border-[var(--accent-uv)] text-[var(--text-primary)] bg-[var(--accent-uv-glow)] shadow-[0_0_12px_var(--accent-uv-glow)]'
                       : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]'
                   }`}
                 >
@@ -266,7 +285,8 @@ export function CatalogPage() {
 
         {/* Estado Vazio */}
         {!loading && !error && products.length === 0 && (
-          <div className="glass-surface rounded-[24px] py-16 px-6 text-center space-y-4">
+          <div className="relative overflow-hidden glass-surface rounded-[28px] py-16 px-6 text-center space-y-4">
+            <PortalSingularity className="mx-auto w-24 h-24 opacity-60" />
             <p className="font-display text-lg text-[var(--text-primary)]">
               Nenhuma peça corresponde aos filtros aplicados.
             </p>
@@ -285,13 +305,29 @@ export function CatalogPage() {
 
         {/* Grade de Produtos */}
         {!loading && !error && products.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
-            {products.map((product, i) => (
-              <Reveal key={product.id} delayMs={i * 60}>
-                <ProductCard product={product} />
-              </Reveal>
-            ))}
-          </div>
+          <motion.div
+            layout
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6"
+          >
+            <AnimatePresence mode="popLayout">
+              {products.map((product, i) => (
+                <motion.div
+                  key={product.id}
+                  layout
+                  initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, scale: 0.96, filter: 'blur(4px)' }}
+                  transition={{
+                    duration: 0.36,
+                    delay: Math.min(i * 0.04, 0.2),
+                    ease: THRESHOLD_EASE,
+                  }}
+                >
+                  <ProductCard product={product} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
         )}
       </div>
     </div>

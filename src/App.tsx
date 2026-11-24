@@ -7,6 +7,8 @@ import { Navbar } from './components/layout/Navbar';
 import { CartProvider } from './context/CartContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { PortalRouteTransition } from './motion/PortalRouteTransition';
+import { ThresholdMotionProvider } from './motion/ThresholdMotionProvider';
 import { AboutPage } from './pages/AboutPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { CollectionsPage } from './pages/CollectionsPage';
@@ -15,7 +17,7 @@ import { HomePage } from './pages/HomePage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 
 function AppShell() {
-  const { pathname } = useRouter();
+  const { pathname, commitScroll } = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
@@ -44,6 +46,8 @@ function AppShell() {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+      {/* Camadas atmosféricas discretas (adaptáveis aos dois temas) */}
+      <div className="limiar-atmosphere" aria-hidden="true" />
       {/* Textura granulada analógica sutil */}
       <div className="limiar-grain" aria-hidden="true" />
 
@@ -52,7 +56,11 @@ function AppShell() {
         onOpenAccount={() => setAccountOpen(true)}
       />
 
-      <main className="flex-1">{renderPage()}</main>
+      <main className="relative z-10 flex-1">
+        <PortalRouteTransition routeKey={pathname || '/'} onTransitionScroll={commitScroll}>
+          {renderPage()}
+        </PortalRouteTransition>
+      </main>
 
       <Footer />
 
@@ -66,11 +74,13 @@ function AppShell() {
 export default function App() {
   return (
     <ThemeProvider>
-      <RouterProvider>
-        <CartProvider>
-          <AppShell />
-        </CartProvider>
-      </RouterProvider>
+      <ThresholdMotionProvider>
+        <RouterProvider>
+          <CartProvider>
+            <AppShell />
+          </CartProvider>
+        </RouterProvider>
+      </ThresholdMotionProvider>
     </ThemeProvider>
   );
 }

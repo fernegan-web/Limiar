@@ -1,9 +1,11 @@
-import React from 'react';
-import { Plus } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Check, Plus } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useCart } from '../../context/CartContext';
 import { useRouter } from '../../context/RouterContext';
+import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import type { AccentTone, Product } from '../../types/commerce';
-import { LimiarStar } from '../ornaments/CybersigilismOrnaments';
+import { CybersigilismCorner, LimiarStar } from '../ornaments/CybersigilismOrnaments';
 import { ResilientImage } from '../ui/ResilientImage';
 
 const ACCENT_DOT_COLORS: Record<AccentTone, string> = {
@@ -21,6 +23,9 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const { navigate } = useRouter();
   const { addItem } = useCart();
+  const { reducedMotion } = useThresholdPointer();
+  const cardRef = useRef<HTMLElement | null>(null);
+  const [addedPulse, setAddedPulse] = useState(false);
 
   const firstAvailableVariant =
     product.variants.find((v) => v.inStock) ?? product.variants[0];
@@ -37,26 +42,54 @@ export function ProductCard({ product }: ProductCardProps) {
       return;
     }
     addItem(product, firstAvailableVariant, 1);
+    setAddedPulse(true);
+    window.setTimeout(() => setAddedPulse(false), 750);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (reducedMotion || e.pointerType === 'touch' || !cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    cardRef.current.style.setProperty('--card-x', `${e.clientX - rect.left}px`);
+    cardRef.current.style.setProperty('--card-y', `${e.clientY - rect.top}px`);
   };
 
   return (
-    <article className="group glass-card rounded-[20px] p-3.5 flex flex-col justify-between transition-transform duration-300 hover:-translate-y-0.5">
+    <article
+      ref={cardRef}
+      onPointerMove={handlePointerMove}
+      className="group glass-card rounded-[22px] p-3.5 flex flex-col justify-between hover:-translate-y-1"
+    >
       {/* Media Container */}
       <a
         href={`/produto/${product.slug}`}
         onClick={handleOpenProduct}
-        className="relative block aspect-[3/4] w-full overflow-hidden rounded-[14px] bg-[var(--bg-card-media)]"
+        className="relative block aspect-[3/4] w-full overflow-hidden rounded-[15px] bg-[var(--bg-card-media)] border border-[var(--border-hairline)]"
       >
         <ResilientImage
           src={product.images[0]}
           alt={product.name}
           fallbackTitle={product.name}
-          className="h-full w-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.035]"
+          className="h-full w-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
           loading="lazy"
         />
+
+        {/* Subtle edge vignette inside media for garment depth */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10 opacity-70"
+        />
+
+        {/* Discreet corner sigil reveal on hover */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-3 right-3 text-[#E8E7E0]/75 transition-transform duration-500 group-hover:rotate-12"
+          className="pointer-events-none absolute bottom-2 left-2 text-[#E8E7E0]/45 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+        >
+          <CybersigilismCorner className="w-10 h-10 rotate-180" />
+        </span>
+
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute top-3 right-3 text-[#E8E7E0]/75 transition-transform duration-500 group-hover:rotate-12 group-hover:text-[var(--accent-uv)]"
         >
           <LimiarStar className="w-4 h-4" />
         </span>
@@ -84,15 +117,25 @@ export function ProductCard({ product }: ProductCardProps) {
           </p>
         </div>
 
-        <button
+        <motion.button
           type="button"
+          whileHover={{ scale: 1.07 }}
+          whileTap={{ scale: 0.9 }}
           onClick={handleQuickAdd}
           aria-label={`Adicionar ${product.name} ao carrinho`}
           title={`Adicionar ${product.name} (${firstAvailableVariant?.size ?? ''})`}
-          className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-full border border-[var(--border-strong)] bg-[var(--bg-glass)] text-[var(--text-primary)] hover:border-[var(--accent-uv)] hover:shadow-[0_0_16px_var(--accent-uv-glow)] transition-all duration-200"
+          className={`shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-full border transition-all duration-200 ${
+            addedPulse
+              ? 'border-[var(--accent-acid)] bg-[var(--bg-surface-hover)] text-[var(--accent-acid)] shadow-[0_0_18px_var(--accent-uv-glow)]'
+              : 'border-[var(--border-strong)] bg-[var(--bg-glass)] text-[var(--text-primary)] hover:border-[var(--accent-uv)] hover:shadow-[0_0_18px_var(--accent-uv-glow)]'
+          }`}
         >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-        </button>
+          {addedPulse ? (
+            <Check className="w-4 h-4" aria-hidden="true" />
+          ) : (
+            <Plus className="w-4 h-4" aria-hidden="true" />
+          )}
+        </motion.button>
       </div>
     </article>
   );

@@ -1,15 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRight, Compass, Infinity as InfinityIcon, Leaf, RefreshCw, ShieldCheck, Truck } from 'lucide-react';
 import { ProductCard } from '../components/commerce/ProductCard';
+import { HeroThresholdComposition } from '../components/hero/HeroThresholdComposition';
 import {
+  CybersigilismCorner,
+  CybersigilismDivider,
   CybersigilismWeb,
   EclipseSigil,
   LimiarStar,
 } from '../components/ornaments/CybersigilismOrnaments';
+import { Ornaments } from '../components/ornaments/Ornaments';
 import { ResilientImage } from '../components/ui/ResilientImage';
 import { Reveal } from '../components/ui/Reveal';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
 import { useRouter } from '../context/RouterContext';
+import {
+  ThresholdMagnetic,
+  ThresholdScrollParallax,
+} from '../motion/ThresholdPrimitives';
 import { DEMO_IMAGES } from '../data/demoCatalog';
 import { fetchCategories, fetchFeaturedProducts } from '../services/catalogService';
 import type { Category, Product } from '../types/commerce';
@@ -34,8 +42,9 @@ const HERO_SLIDES: HeroSlide[] = [
     description: 'Algumas coisas só podem ser compreendidas depois da travessia.',
     ctaLabel: 'EXPLORAR COLEÇÃO',
     ctaHref: '/loja',
-    image: DEMO_IMAGES.heroModel,
-    imageAlt: 'Modelo usando camiseta oversized preta da Limiar em estética editorial dark underground',
+    image: '/assets/hero-model.png',
+    imageAlt:
+      'Modelo oficial Limiar com dreadlocks, piercings, tatuagens e camiseta oversized preta estampada com a logo oficial',
   },
 ];
 
@@ -80,15 +89,8 @@ export function HomePage() {
 
   return (
     <div className="relative overflow-hidden">
-      {/* Ornamentos Ambientais Independentes */}
-      <CybersigilismWeb
-        tone="uv"
-        className="limiar-ambient-float absolute -top-10 -left-24 w-[380px] h-[380px] sm:w-[460px] sm:h-[460px] opacity-55"
-      />
-      <CybersigilismWeb
-        tone="neutral"
-        className="absolute top-16 -right-28 w-[420px] h-[420px] sm:w-[540px] sm:h-[540px] rotate-90 opacity-45"
-      />
+      {/* Ornamentos Neotribais / Cybersigilism nas extremidades do Hero */}
+      <Ornaments />
 
       {/* ================================================================
           SEÇÃO 1: HERO EDITORIAL
@@ -96,7 +98,7 @@ export function HomePage() {
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-6 pb-16 sm:pt-10 sm:pb-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-10 lg:gap-6">
           {/* Coluna Esquerda: Texto & CTA */}
-          <div className="lg:col-span-6 xl:col-span-6 z-10 space-y-6 sm:space-y-8">
+          <div className="lg:col-span-6 xl:col-span-6 relative z-30 space-y-6 sm:space-y-8">
             <p
               className="limiar-enter text-[11px] sm:text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]"
               style={{ animationDelay: '60ms' }}
@@ -111,7 +113,7 @@ export function HomePage() {
               <h1 className="font-display font-light text-4xl sm:text-6xl xl:text-[64px] leading-[1.03] tracking-[0.03em] text-[var(--text-primary)] uppercase text-balance max-w-xl">
                 {currentSlide.title}
               </h1>
-              <LimiarStar className="w-7 h-7 sm:w-9 sm:h-9 text-[var(--text-secondary)] shrink-0 mt-2 opacity-75" />
+              <LimiarStar className="w-7 h-7 sm:w-9 sm:h-9 text-[var(--text-secondary)] shrink-0 mt-2 opacity-80" />
             </div>
 
             <p
@@ -125,9 +127,11 @@ export function HomePage() {
               className="limiar-enter pt-1"
               style={{ animationDelay: '300ms' }}
             >
-              <UltravioletButton href={currentSlide.ctaHref} size="lg">
-                {currentSlide.ctaLabel}
-              </UltravioletButton>
+              <ThresholdMagnetic maxPull={4}>
+                <UltravioletButton href={currentSlide.ctaHref} size="lg">
+                  {currentSlide.ctaLabel}
+                </UltravioletButton>
+              </ThresholdMagnetic>
             </div>
 
             {/* Indicador preparado para futuros slides */}
@@ -143,32 +147,14 @@ export function HomePage() {
             </div>
           </div>
 
-          {/* Coluna Direita: Modelo Independente + Halo Cósmico */}
-          <div className="lg:col-span-6 xl:col-span-6 relative flex items-center justify-center">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute w-[320px] h-[320px] sm:w-[460px] sm:h-[460px] rounded-full border border-[var(--border-hairline)] shadow-[0_0_90px_-18px_var(--accent-uv-glow)] opacity-80"
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute w-[260px] h-[260px] sm:w-[380px] sm:h-[380px] rounded-full bg-radial from-[#17191A]/55 via-[#17191A]/20 to-transparent dark:from-[#E8E7E0]/[0.06] dark:via-transparent"
-            />
-
-            <div
-              className="limiar-enter relative w-full max-w-[440px] lg:max-w-[500px] aspect-[3/4]"
-              style={{ animationDelay: '180ms' }}
-            >
-              <ResilientImage
-                src={currentSlide.image}
-                alt={currentSlide.imageAlt}
-                className="w-full h-full object-cover object-top [mask-image:radial-gradient(ellipse_66%_74%_at_50%_46%,black_32%,transparent_72%)]"
-              />
-            </div>
+          {/* Coluna Direita: Composição Tridimensional Oficial (Buraco Negro + Cybersigilism + Modelo) */}
+          <div className="lg:col-span-6 xl:col-span-6 relative flex items-end justify-center xl:pr-10">
+            <HeroThresholdComposition modelAlt={currentSlide.imageAlt} />
 
             {/* Rail lateral discreto */}
             <div
               aria-hidden="true"
-              className="hidden xl:flex flex-col items-center gap-3 absolute right-0 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+              className="hidden xl:flex flex-col items-center gap-3 absolute right-0 top-1/2 -translate-y-1/2 z-30 text-[var(--text-muted)]"
             >
               <span className="w-[1px] h-10 bg-[var(--border-hairline)]" />
               <EclipseSigil className="w-5 h-5 text-[var(--text-secondary)]" />
@@ -180,13 +166,19 @@ export function HomePage() {
         </div>
       </section>
 
+      {/* Divisor Neotribal Sutil entre Hero e Destaque */}
+      <div className="mx-auto max-w-[1360px] px-4 sm:px-8">
+        <CybersigilismDivider className="w-full max-w-2xl mx-auto opacity-75" />
+      </div>
+
       {/* ================================================================
           SEÇÃO 2: COLEÇÕES EM DESTAQUE (PRODUTOS)
           ================================================================ */}
-      <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-10 sm:py-14">
+      <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16">
         <Reveal>
           <div className="flex items-center justify-between gap-4 mb-8">
             <div className="flex items-center gap-4 flex-1 min-w-0">
+              <LimiarStar className="w-4 h-4 text-[var(--accent-uv)] shrink-0 opacity-80" />
               <h2 className="font-display text-xs sm:text-[13px] uppercase tracking-[0.22em] font-medium text-[var(--text-primary)] whitespace-nowrap">
                 COLEÇÕES EM DESTAQUE
               </h2>
@@ -220,11 +212,20 @@ export function HomePage() {
           ================================================================ */}
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-8">
         <Reveal>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-hairline)]">
-            <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
-              Categorias demonstrativas
-            </span>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="glass-surface rounded-[22px] p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="flex items-center gap-3">
+              <EclipseSigil className="w-5 h-5 text-[var(--text-secondary)] shrink-0" />
+              <div>
+                <span className="block text-[11px] uppercase tracking-[0.2em] text-[var(--text-primary)] font-medium">
+                  Navegue por categorias
+                </span>
+                <span className="block text-xs text-[var(--text-muted)]">
+                  Estrutura demonstrativa preparada para sincronização Wix
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
               {categories.map((cat) => (
                 <a
                   key={cat.id}
@@ -233,9 +234,16 @@ export function HomePage() {
                     e.preventDefault();
                     navigate(`/loja?categoria=${cat.id}`);
                   }}
-                  className="glass-surface px-4 py-2 rounded-full text-xs uppercase tracking-[0.14em] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-all whitespace-nowrap shrink-0"
+                  className="group glass-card px-4 py-2.5 rounded-full inline-flex items-center gap-2.5 text-xs uppercase tracking-[0.14em] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent-uv-edge)] whitespace-nowrap shrink-0"
                 >
-                  {cat.name}
+                  <span>{cat.name}</span>
+                  <span className="text-[10px] text-[var(--text-muted)] tabular-nums">
+                    {cat.productCount}
+                  </span>
+                  <ArrowRight
+                    className="w-3 h-3 text-[var(--text-muted)] group-hover:text-[var(--accent-uv)] group-hover:translate-x-0.5 transition-all"
+                    aria-hidden="true"
+                  />
                 </a>
               ))}
             </div>
@@ -247,24 +255,31 @@ export function HomePage() {
           SEÇÃO 4: BANNER INSTITUCIONAL
           ================================================================ */}
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-10 sm:py-14">
+        <CybersigilismWeb
+          tone="neutral"
+          className="hidden lg:block absolute -left-32 top-1/2 -translate-y-1/2 w-80 h-80 opacity-45"
+        />
         <Reveal>
-          <div className="relative overflow-hidden rounded-[28px] glass-card min-h-[340px] sm:min-h-[380px] flex items-center">
-            {/* Imagem atmosférica de fundo */}
-            <ResilientImage
-              src={DEMO_IMAGES.bannerEclipse}
-              alt="Eclipse sobre atmosfera underground Limiar"
-              className="absolute inset-0 w-full h-full object-cover object-[65%_22%] opacity-75 dark:opacity-80"
-            />
+          <div className="relative overflow-hidden rounded-[28px] glass-card min-h-[360px] sm:min-h-[400px] flex items-center">
+            {/* Imagem atmosférica de fundo com parallax no scroll */}
+            <ThresholdScrollParallax offsetY={20} scaleRange={[1.07, 1.01]} className="absolute inset-0">
+              <ResilientImage
+                src={DEMO_IMAGES.bannerEclipse}
+                alt="Eclipse sobre atmosfera underground Limiar"
+                className="w-full h-full object-cover object-[65%_22%] opacity-78 dark:opacity-85"
+              />
+            </ThresholdScrollParallax>
             {/* Scrim controlado para legibilidade garantida nos dois temas */}
             <div
               aria-hidden="true"
-              className="absolute inset-0 bg-gradient-to-r from-[var(--bg-elevated)] via-[var(--bg-elevated)]/88 to-[var(--bg-elevated)]/25 dark:from-[#080909] dark:via-[#080909]/85 dark:to-transparent"
+              className="absolute inset-0 bg-gradient-to-r from-[var(--bg-elevated)] via-[var(--bg-elevated)]/88 to-[var(--bg-elevated)]/22 dark:from-[#080909] dark:via-[#080909]/84 dark:to-transparent"
             />
 
             <CybersigilismWeb
               tone="uv"
-              className="hidden sm:block absolute -right-12 -bottom-14 w-72 h-72 opacity-50"
+              className="hidden sm:block absolute -right-10 -bottom-12 w-72 h-72 opacity-65"
             />
+            <CybersigilismCorner className="hidden sm:block absolute top-4 right-4 w-12 h-12 opacity-60" />
 
             <div className="relative z-10 max-w-xl p-7 sm:p-12 space-y-5">
               <LimiarStar className="w-6 h-6 text-[var(--text-secondary)]" />
@@ -275,7 +290,7 @@ export function HomePage() {
                 Entre o que você acredita ser e aquilo que ainda não descobriu sobre si mesmo.
               </p>
               <div className="pt-2">
-                <UltravioletButton href="/sobre" size="md">
+                <UltravioletButton href="/sobre" variant="secondary" size="md">
                   SOBRE LIMIAR
                 </UltravioletButton>
               </div>
@@ -322,8 +337,12 @@ export function HomePage() {
           ================================================================ */}
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-10">
         <Reveal>
-          <div className="relative overflow-hidden rounded-[28px] glass-surface p-6 sm:p-10">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="relative overflow-hidden rounded-[28px] glass-surface-strong p-6 sm:p-10">
+            <CybersigilismWeb
+              tone="uv"
+              className="pointer-events-none absolute -left-16 -top-16 w-64 h-64 opacity-45"
+            />
+            <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div className="flex items-start sm:items-center gap-4">
                 <LimiarStar className="w-6 h-6 text-[var(--text-secondary)] shrink-0" />
                 <div className="space-y-1">
@@ -341,7 +360,7 @@ export function HomePage() {
                 noValidate
                 className="w-full lg:w-auto lg:min-w-[440px]"
               >
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-1.5 rounded-2xl sm:rounded-full border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-1.5 rounded-2xl sm:rounded-full border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/65 focus-within:border-[var(--accent-uv-edge)] transition-colors">
                   <label htmlFor="newsletter-email" className="sr-only">
                     Seu e-mail
                   </label>

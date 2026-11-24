@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { Compass } from 'lucide-react';
-import { CybersigilismWeb } from '../components/ornaments/CybersigilismOrnaments';
+import {
+  CybersigilismCorner,
+  CybersigilismWeb,
+  EclipseSigil,
+  PortalSingularity,
+} from '../components/ornaments/CybersigilismOrnaments';
 import { Reveal } from '../components/ui/Reveal';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
 import { validateContactForm, type ContactFormInput } from '../utils/validation';
@@ -41,21 +46,29 @@ export function ContactPage() {
     <div className="relative overflow-hidden">
       <CybersigilismWeb
         tone="mineral"
-        className="absolute -top-24 -right-20 w-[400px] h-[400px] opacity-40"
+        className="absolute -top-24 -right-20 w-[420px] h-[420px] opacity-45"
+      />
+      <CybersigilismWeb
+        tone="uv"
+        className="absolute bottom-0 -left-24 w-[360px] h-[360px] opacity-35"
       />
 
-      <div className="relative mx-auto max-w-[1160px] px-4 sm:px-8 pt-12 pb-20">
+      <div className="relative mx-auto max-w-[1180px] px-4 sm:px-8 pt-12 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start">
-          <div className="lg:col-span-5 space-y-4">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
-              Atendimento
-            </p>
+          <div className="lg:col-span-5 space-y-5">
+            <div className="flex items-center gap-2.5 text-[var(--text-muted)]">
+              <EclipseSigil className="w-5 h-5 text-[var(--accent-uv)]" />
+              <p className="text-[11px] uppercase tracking-[0.22em]">Atendimento</p>
+            </div>
             <h1 className="font-display font-light text-3xl sm:text-5xl uppercase tracking-[0.03em] text-[var(--text-primary)]">
               CONTATO
             </h1>
             <p className="text-sm sm:text-base text-[var(--text-secondary)] leading-relaxed">
               Canal direto para dúvidas sobre modelagens, eventos ou integração futura com pedidos realizados via Wix.
             </p>
+            <div className="hidden lg:block pt-4">
+              <PortalSingularity className="w-40 h-40 opacity-55" />
+            </div>
           </div>
 
           <div className="lg:col-span-7">
@@ -63,8 +76,10 @@ export function ContactPage() {
               <form
                 onSubmit={handleSubmit}
                 noValidate
-                className="glass-surface rounded-[26px] p-6 sm:p-8 space-y-5"
+                className="relative overflow-hidden glass-surface-strong rounded-[28px] p-6 sm:p-8 space-y-5"
               >
+                <CybersigilismCorner className="absolute top-3 right-3 w-11 h-11 opacity-45" />
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="space-y-1.5">
                     <label
@@ -80,7 +95,7 @@ export function ContactPage() {
                       onChange={(e) => handleChange('name', e.target.value)}
                       placeholder="Seu nome"
                       aria-invalid={Boolean(errors.name)}
-                      className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:outline-none"
+                      className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:outline-none transition-colors"
                     />
                     {errors.name && (
                       <p role="alert" className="text-xs text-[var(--accent-terracotta)]">
@@ -103,7 +118,7 @@ export function ContactPage() {
                       onChange={(e) => handleChange('email', e.target.value)}
                       placeholder="seu@email.com"
                       aria-invalid={Boolean(errors.email)}
-                      className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:outline-none"
+                      className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:outline-none transition-colors"
                     />
                     {errors.email && (
                       <p role="alert" className="text-xs text-[var(--accent-terracotta)]">
@@ -127,7 +142,7 @@ export function ContactPage() {
                     onChange={(e) => handleChange('subject', e.target.value)}
                     placeholder="Sobre o que deseja falar?"
                     aria-invalid={Boolean(errors.subject)}
-                    className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:outline-none"
+                    className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:outline-none transition-colors"
                   />
                   {errors.subject && (
                     <p role="alert" className="text-xs text-[var(--accent-terracotta)]">
@@ -150,7 +165,7 @@ export function ContactPage() {
                     onChange={(e) => handleChange('message', e.target.value)}
                     placeholder="Escreva sua mensagem..."
                     aria-invalid={Boolean(errors.message)}
-                    className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:outline-none resize-y"
+                    className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:outline-none resize-y transition-colors"
                   />
                   {errors.message && (
                     <p role="alert" className="text-xs text-[var(--accent-terracotta)]">
