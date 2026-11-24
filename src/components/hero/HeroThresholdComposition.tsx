@@ -17,7 +17,8 @@ interface HeroThresholdCompositionProps {
  * animações de entrada ou conflitar transformações CSS/Motion.
  */
 export function HeroThresholdComposition({ modelAlt }: HeroThresholdCompositionProps) {
-  const { nx, ny, reducedMotion } = useThresholdPointer();
+  const { nx, ny, reducedMotion, portalRevealed } = useThresholdPointer();
+  const shouldPlayEntrance = reducedMotion || portalRevealed;
 
   // Camada 02 — Buraco negro (direção oposta, interpolação mais lenta)
   const bhTargetX = useTransform(
@@ -96,9 +97,9 @@ export function HeroThresholdComposition({ modelAlt }: HeroThresholdCompositionP
         className="pointer-events-none absolute top-[6%] sm:top-[4%] left-1/2 -translate-x-1/2 w-[136%] sm:w-[144%] lg:w-[144%] max-w-none z-0"
       >
         <motion.div
-          initial={reducedMotion ? false : { opacity: 0, scale: 0.94 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.86, delay: 0.08, ease: THRESHOLD_EASE }}
+          initial={reducedMotion ? false : { opacity: 0, scale: 0.96 }}
+          animate={shouldPlayEntrance ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.96 }}
+          transition={{ duration: 0.52, delay: 0, ease: THRESHOLD_EASE }}
         >
           <div className="limiar-blackhole-pulse">
             <picture>
@@ -127,10 +128,14 @@ export function HeroThresholdComposition({ modelAlt }: HeroThresholdCompositionP
           initial={
             reducedMotion
               ? false
-              : { opacity: 0, scale: 0.95, filter: 'blur(5px)' }
+              : { opacity: 0, scale: 0.96, filter: 'blur(4px)' }
           }
-          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-          transition={{ duration: 0.78, delay: 0.16, ease: THRESHOLD_EASE }}
+          animate={
+            shouldPlayEntrance
+              ? { opacity: 1, scale: 1, filter: 'blur(0px)' }
+              : { opacity: 0, scale: 0.96, filter: 'blur(4px)' }
+          }
+          transition={{ duration: 0.5, delay: 0.05, ease: THRESHOLD_EASE }}
         >
           <picture>
             <source srcSet="/assets/hero-cybersigilism.webp" type="image/webp" />
@@ -156,10 +161,14 @@ export function HeroThresholdComposition({ modelAlt }: HeroThresholdCompositionP
           initial={
             reducedMotion
               ? false
-              : { opacity: 0, y: 18, filter: 'blur(6px)' }
+              : { opacity: 0, y: 14, filter: 'blur(4px)' }
           }
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ duration: 0.74, delay: 0.22, ease: THRESHOLD_EASE }}
+          animate={
+            shouldPlayEntrance
+              ? { opacity: 1, y: 0, filter: 'blur(0px)' }
+              : { opacity: 0, y: 14, filter: 'blur(4px)' }
+          }
+          transition={{ duration: 0.5, delay: 0.09, ease: THRESHOLD_EASE }}
         >
           <picture>
             <source srcSet="/assets/hero-model.webp" type="image/webp" />

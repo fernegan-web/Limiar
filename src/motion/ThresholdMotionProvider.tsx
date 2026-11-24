@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   MotionConfig,
   motion,
@@ -14,6 +14,8 @@ interface ThresholdPointerContextValue {
   nx: MotionValue<number>;
   ny: MotionValue<number>;
   reducedMotion: boolean;
+  portalRevealed: boolean;
+  markPortalRevealed: () => void;
 }
 
 const ThresholdPointerContext = createContext<ThresholdPointerContextValue | null>(null);
@@ -28,6 +30,26 @@ export function useThresholdPointer(): ThresholdPointerContextValue {
 
 export function ThresholdMotionProvider({ children }: { children: React.ReactNode }) {
   const prefersReduced = Boolean(useReducedMotion());
+  const [portalRevealed, setPortalRevealed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
+  const markPortalRevealed = useCallback(() => {
+    setPortalRevealed(true);
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.remove('limiar-intro-holding');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const shouldHold = !prefersReduced && !portalRevealed;
+    document.documentElement.classList.toggle('limiar-intro-holding', shouldHold);
+    return () => {
+      document.documentElement.classList.remove('limiar-intro-holding');
+    };
+  }, [prefersReduced, portalRevealed]);
+
   const rawNx = useMotionValue(0);
   const rawNy = useMotionValue(0);
   const nx = useSpring(rawNx, THRESHOLD_SPRING.pointer);
@@ -101,7 +123,15 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
 
   return (
     <MotionConfig reducedMotion="user">
-      <ThresholdPointerContext.Provider value={{ nx, ny, reducedMotion: prefersReduced }}>
+      <ThresholdPointerContext.Provider
+        value={{
+          nx,
+          ny,
+          reducedMotion: prefersReduced,
+          portalRevealed: prefersReduced || portalRevealed,
+          markPortalRevealed,
+        }}
+      >
         {/* Iluminação atmosférica sutil que acompanha o cursor sem poluir o conteúdo */}
         {!prefersReduced && (
           <div

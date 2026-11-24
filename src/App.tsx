@@ -4,13 +4,17 @@ import { CartDrawer } from './components/commerce/CartDrawer';
 import { SearchOverlay } from './components/commerce/SearchOverlay';
 import { Footer } from './components/layout/Footer';
 import { Navbar } from './components/layout/Navbar';
+import { PortalIntroOverlay } from './components/intro/PortalIntroOverlay';
 import { NeotribalGlobalBackground } from './components/ornaments/NeotribalGlobalBackground';
 import { OrbitalCursor } from './components/ui/OrbitalCursor';
 import { CartProvider } from './context/CartContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { PortalRouteTransition } from './motion/PortalRouteTransition';
-import { ThresholdMotionProvider } from './motion/ThresholdMotionProvider';
+import {
+  ThresholdMotionProvider,
+  useThresholdPointer,
+} from './motion/ThresholdMotionProvider';
 import { AboutPage } from './pages/AboutPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { CollectionsPage } from './pages/CollectionsPage';
@@ -20,8 +24,13 @@ import { ProductDetailPage } from './pages/ProductDetailPage';
 
 function AppShell() {
   const { pathname, commitScroll } = useRouter();
+  const { reducedMotion, markPortalRevealed } = useThresholdPointer();
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [introActive, setIntroActive] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
 
   const renderPage = () => {
     if (pathname === '/' || pathname === '') {
@@ -72,6 +81,15 @@ function AppShell() {
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
       <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)} />
       <OrbitalCursor />
+      {introActive && !reducedMotion && (
+        <PortalIntroOverlay
+          onPortalOpen={markPortalRevealed}
+          onComplete={() => {
+            markPortalRevealed();
+            setIntroActive(false);
+          }}
+        />
+      )}
     </div>
   );
 }

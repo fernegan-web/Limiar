@@ -97,14 +97,14 @@ export function HomePage() {
           <div className="lg:col-span-6 xl:col-span-6 relative z-30 space-y-6 sm:space-y-8">
             <p
               className="limiar-enter text-[11px] sm:text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]"
-              style={{ animationDelay: '60ms' }}
+              style={{ animationDelay: '0ms' }}
             >
               {currentSlide.eyebrow}
             </p>
 
             <div
               className="limiar-enter flex items-start gap-4"
-              style={{ animationDelay: '140ms' }}
+              style={{ animationDelay: '45ms' }}
             >
               <h1 className="font-display font-light text-4xl sm:text-6xl xl:text-[64px] leading-[1.03] tracking-[0.03em] text-[var(--text-primary)] uppercase text-balance max-w-xl">
                 {currentSlide.title}
@@ -114,14 +114,14 @@ export function HomePage() {
 
             <p
               className="limiar-enter text-base sm:text-lg text-[var(--text-secondary)] max-w-md leading-relaxed"
-              style={{ animationDelay: '220ms' }}
+              style={{ animationDelay: '90ms' }}
             >
               {currentSlide.description}
             </p>
 
             <div
               className="limiar-enter pt-1"
-              style={{ animationDelay: '300ms' }}
+              style={{ animationDelay: '135ms' }}
             >
               <ThresholdMagnetic maxPull={4}>
                 <UltravioletButton href={currentSlide.ctaHref} size="lg">
@@ -133,7 +133,7 @@ export function HomePage() {
             {/* Indicador preparado para futuros slides */}
             <div
               className="limiar-enter pt-6 flex items-center gap-4 text-[11px] tracking-[0.2em] text-[var(--text-muted)] tabular-nums"
-              style={{ animationDelay: '380ms' }}
+              style={{ animationDelay: '180ms' }}
             >
               <span>0{activeSlideIndex + 1}</span>
               <span className="w-16 h-[1px] bg-[var(--border-strong)] relative overflow-hidden">
