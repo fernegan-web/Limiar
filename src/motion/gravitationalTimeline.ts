@@ -56,8 +56,8 @@ export function resolveOperationalState(params: {
     return 'inactive';
   }
   const p = clamp(params.progress, 0, 1);
-  // Após 0.86 o buraco negro já foi atravessado e a tela exibe exclusivamente as coleções
-  if (p >= 0.86) return 'inactive';
+  // Após 0.72 o buraco negro já tem opacidade zero e a tela transiciona para as coleções
+  if (p >= 0.72) return 'inactive';
   if (p <= 0.1) return 'rest';
   return 'traversal';
 }

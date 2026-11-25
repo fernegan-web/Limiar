@@ -18,8 +18,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Manrope:wght@300;400;500;600;700&display=swap"
-      rel="stylesheet"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Manrope:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+    <link
+      rel="preload"
+      as="image"
+      type="image/webp"
+      imagesrcset="/assets/limiar-logo-256.webp 256w, /assets/limiar-logo-512.webp 512w"
+      imagesizes="(max-width: 640px) 160px, 220px"
+      fetchpriority="high"
     />
     <style>
       html.dark, html.dark body { background-color: #080909; color: #e8e7e0; }

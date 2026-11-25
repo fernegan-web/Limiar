@@ -39,13 +39,29 @@ export function ProceduralBlackHole({
   const [webglReady, setWebglReady] = useState(false);
   const [contextLost, setContextLost] = useState(false);
   const [qualityTier, setQualityTier] = useState<BlackHoleQualityTier>('high');
+
+  const computeEffectiveState = (p: number, visible: boolean, tab: boolean, revealed: boolean): BlackHoleOperationalState => {
+    if (!revealed) return 'inactive';
+    return resolveOperationalState({
+      progress: p,
+      inViewport: visible,
+      tabVisible: tab,
+    });
+  };
+
   const [opState, setOpState] = useState<BlackHoleOperationalState>(() =>
-    resolveOperationalState({
-      progress: progressMv?.get() ?? 0,
-      inViewport: true,
-      tabVisible: true,
-    })
+    computeEffectiveState(progressMv?.get() ?? 0, true, true, portalRevealed)
   );
+
+  const portalRevealedRef = useRef(portalRevealed);
+  const inViewportRef = useRef(inViewport);
+  const tabVisibleRef = useRef(tabVisible);
+  const opStateRef = useRef(opState);
+
+  portalRevealedRef.current = portalRevealed;
+  inViewportRef.current = inViewport;
+  tabVisibleRef.current = tabVisible;
+  opStateRef.current = opState;
 
   // Sincroniza visibilidade da aba
   useEffect(() => {
@@ -77,14 +93,11 @@ export function ProceduralBlackHole({
   // Recalcula estado operacional e notifica o motor sem recriar o WebGL
   useEffect(() => {
     const progress = progressMv?.get() ?? 0;
-    const nextState = resolveOperationalState({
-      progress,
-      inViewport,
-      tabVisible,
-    });
+    const nextState = computeEffectiveState(progress, inViewport, tabVisible, portalRevealed);
+    opStateRef.current = nextState;
     setOpState(nextState);
     engineRef.current?.setState(nextState);
-  }, [inViewport, tabVisible, progressMv]);
+  }, [inViewport, tabVisible, portalRevealed, progressMv]);
 
   // Atualiza modo de tema no shader sem reiniciar o motor
   useEffect(() => {
@@ -96,14 +109,16 @@ export function ProceduralBlackHole({
     onQualityChange?.(qualityTier);
   }, [qualityTier, onQualityChange]);
 
-  // Inicialização antecipada em segundo plano durante a intro cinematográfica
+  // Inicialização escalonada após o primeiro paint para não bloquear a introdução nem o FCP
   useEffect(() => {
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
+    let startTimer = 0;
+    let idleId = 0;
 
     const initEngine = async () => {
       const host = canvasHostRef.current;
-      if (!host) return;
+      if (!host || cancelled) return;
 
       try {
         const { probeWebglCapability, createBlackHoleEngine } = await import(
@@ -179,15 +194,21 @@ export function ProceduralBlackHole({
           lightMode: isLightMode,
         });
 
-        const initialState = resolveOperationalState({
-          progress: currentProgress,
-          inViewport,
-          tabVisible,
-        });
-        controller.setState(initialState);
-
-        // Dispara renderização imediata do primeiro frame para pré-compilar shaders e pipeline na GPU
+        // Pré-compila shaders e aquece 1 quadro; loop contínuo inicia apenas quando portalRevealed = true
+        controller.setState('inactive');
         controller.renderSingleFrame();
+
+        const initialState = computeEffectiveState(
+          currentProgress,
+          inViewportRef.current,
+          tabVisibleRef.current,
+          portalRevealedRef.current
+        );
+        opStateRef.current = initialState;
+        setOpState(initialState);
+        if (initialState !== 'inactive') {
+          controller.setState(initialState);
+        }
 
         if (typeof ResizeObserver !== 'undefined') {
           resizeObserver = new ResizeObserver((entries) => {
@@ -206,10 +227,30 @@ export function ProceduralBlackHole({
       }
     };
 
-    void initEngine();
+    const scheduleInit = () => {
+      if (cancelled) return;
+      const win = window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+        cancelIdleCallback?: (id: number) => void;
+      };
+      if (typeof win.requestIdleCallback === 'function') {
+        idleId = win.requestIdleCallback(() => {
+          void initEngine();
+        }, { timeout: 220 });
+      } else {
+        void initEngine();
+      }
+    };
+
+    startTimer = window.setTimeout(scheduleInit, portalRevealedRef.current ? 0 : 220);
 
     return () => {
       cancelled = true;
+      if (startTimer) window.clearTimeout(startTimer);
+      const win = window as Window & { cancelIdleCallback?: (id: number) => void };
+      if (idleId && typeof win.cancelIdleCallback === 'function') {
+        win.cancelIdleCallback(idleId);
+      }
       resizeObserver?.disconnect();
       engineRef.current?.dispose();
       engineRef.current = null;
@@ -235,7 +276,6 @@ export function ProceduralBlackHole({
     const unsubNx = nx.on('change', syncPointer);
     const unsubNy = ny.on('change', syncPointer);
 
-    let lastOpState: BlackHoleOperationalState = opState;
     const unsubProgress = progressMv?.on('change', (p) => {
       const isMob =
         typeof window !== 'undefined' ? window.innerWidth < 768 : false;
@@ -248,13 +288,14 @@ export function ProceduralBlackHole({
         pointerY: -ny.get() * frame.heroPointerStrength,
       });
 
-      const nextState = resolveOperationalState({
-        progress: p,
-        inViewport,
-        tabVisible,
-      });
-      if (nextState !== lastOpState) {
-        lastOpState = nextState;
+      const nextState = computeEffectiveState(
+        p,
+        inViewportRef.current,
+        tabVisibleRef.current,
+        portalRevealedRef.current
+      );
+      if (nextState !== opStateRef.current) {
+        opStateRef.current = nextState;
         setOpState(nextState);
         engineRef.current?.setState(nextState);
       }
@@ -265,7 +306,7 @@ export function ProceduralBlackHole({
       unsubNy();
       unsubProgress?.();
     };
-  }, [progressMv, nx, ny, inViewport, tabVisible, opState]);
+  }, [progressMv, nx, ny]);
 
   const showLiveWebgl = webglReady && !contextLost;
 

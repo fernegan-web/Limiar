@@ -7,6 +7,7 @@ import {
   type BlackHoleQualityTier,
   type CollapseVectorConfig,
 } from '../../motion/gravitationalTimeline';
+import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { ThresholdMagnetic } from '../../motion/ThresholdPrimitives';
 import type { Collection } from '../../types/commerce';
 import { CollectionsRevealSection } from '../collections/CollectionsRevealSection';
@@ -33,6 +34,35 @@ interface HeroTraversalStageProps {
   onViewAllProducts: () => void;
 }
 
+interface MeasuredBox {
+  centerX: number;
+  centerY: number;
+}
+
+function measureElementCenter(
+  node: HTMLElement | null,
+  parentRect: DOMRect | undefined
+): MeasuredBox | null {
+  if (!node || !parentRect) return null;
+  return {
+    centerX: parentRect.left + node.offsetLeft + node.offsetWidth * 0.5,
+    centerY: parentRect.top + node.offsetTop + node.offsetHeight * 0.5,
+  };
+}
+
+function pullFromMeasured(
+  measured: MeasuredBox | null,
+  targetX: number,
+  targetY: number,
+  pullFactor: number
+): { pullX: number; pullY: number } {
+  if (!measured) return { pullX: 0, pullY: 0 };
+  return {
+    pullX: (targetX - measured.centerX) * pullFactor,
+    pullY: (targetY - measured.centerY) * pullFactor,
+  };
+}
+
 function applyCollapseStyle(
   node: HTMLElement | null,
   progress: number,
@@ -53,25 +83,6 @@ function applyCollapseStyle(
   node.style.pointerEvents = st.pointerInteractive ? 'auto' : 'none';
 }
 
-function computePullTowardSingularity(
-  node: HTMLElement | null,
-  parentNode: HTMLElement | null,
-  targetX: number,
-  targetY: number,
-  pullFactor = 0.56
-): { pullX: number; pullY: number } {
-  if (!node || !parentNode) {
-    return { pullX: 0, pullY: 0 };
-  }
-  const parentRect = parentNode.getBoundingClientRect();
-  const restCenterX = parentRect.left + node.offsetLeft + node.offsetWidth * 0.5;
-  const restCenterY = parentRect.top + node.offsetTop + node.offsetHeight * 0.5;
-  return {
-    pullX: (targetX - restCenterX) * pullFactor,
-    pullY: (targetY - restCenterY) * pullFactor,
-  };
-}
-
 export function HeroTraversalStage({
   slide,
   activeSlideIndex,
@@ -79,6 +90,7 @@ export function HeroTraversalStage({
   collections,
   onViewAllProducts,
 }: HeroTraversalStageProps) {
+  const { portalRevealed } = useThresholdPointer();
   const trackRef = useRef<HTMLElement | null>(null);
   const leftColRef = useRef<HTMLDivElement | null>(null);
   const rightColRef = useRef<HTMLDivElement | null>(null);
@@ -107,6 +119,8 @@ export function HeroTraversalStage({
   const angleDegRef = useRef(0);
   const lastScrollYRef = useRef(0);
   const smoothedBoostRef = useRef(0);
+  const wasAtRestRef = useRef(false);
+  const ensureWreathLoopRef = useRef<(() => void) | null>(null);
 
   const displacementRef = useRef<SVGFEDisplacementMapElement | null>(null);
   const rawId = useId();
@@ -126,9 +140,22 @@ export function HeroTraversalStage({
   }, []);
 
   useEffect(() => {
+    const restConfig: CollapseVectorConfig = {
+      pullX: 0,
+      pullY: 0,
+      stretchFactor: 0,
+      skewDeg: 0,
+      rotateDeg: 0,
+      resistance: 1,
+    };
+
     const applyFrame = (p: number) => {
       progressMv.set(p);
       progressRef.current = p;
+
+      if (p < 0.78) {
+        ensureWreathLoopRef.current?.();
+      }
 
       const width = typeof window !== 'undefined' ? window.innerWidth : 1440;
       const height = typeof window !== 'undefined' ? window.innerHeight : 900;
@@ -142,9 +169,72 @@ export function HeroTraversalStage({
         trackRef.current.dataset.traversalProgress = p.toFixed(3);
       }
 
-      // Centro visual real do buraco negro em coordenadas da viewport
+      if (scrollHintRef.current) {
+        const hintOpacity = p < 0.08 ? Math.max(0, 1 - p / 0.08) : 0;
+        scrollHintRef.current.style.opacity = String(hintOpacity.toFixed(3));
+      }
+
+      // Fast-path em repouso: evita leituras de layout e escritas redundantes no DOM
+      if (p <= 0.1) {
+        if (!wasAtRestRef.current) {
+          wasAtRestRef.current = true;
+          if (displacementRef.current) {
+            displacementRef.current.setAttribute('scale', '0');
+          }
+          applyCollapseStyle(eyebrowRef.current, p, restConfig);
+          applyCollapseStyle(titleRef.current, p, restConfig);
+          applyCollapseStyle(descRef.current, p, restConfig);
+          applyCollapseStyle(ctaRef.current, p, restConfig);
+          applyCollapseStyle(counterRef.current, p, restConfig);
+          applyCollapseStyle(railRef.current, p, restConfig);
+          applyCollapseStyle(modelCollapseRef.current, p, restConfig);
+
+          if (wreathTransformRef.current) {
+            wreathTransformRef.current.style.transform = `translate3d(0px, 0px, 0) scale(${frame.wreathScale})`;
+            wreathTransformRef.current.style.opacity = '1';
+          }
+          if (wreathBlurRef.current) {
+            wreathBlurRef.current.style.filter = 'none';
+          }
+          const restTransform = `translate3d(0px, 0px, 0) scale(${frame.scale})`;
+          if (blackholeOuterRef.current) {
+            blackholeOuterRef.current.style.transform = restTransform;
+            blackholeOuterRef.current.style.opacity = '1';
+          }
+          if (blackholeFrontOuterRef.current) {
+            blackholeFrontOuterRef.current.style.transform = restTransform;
+            blackholeFrontOuterRef.current.style.opacity = '1';
+          }
+          if (heroOverlayGroupRef.current) {
+            heroOverlayGroupRef.current.style.opacity = '1';
+            heroOverlayGroupRef.current.style.pointerEvents = 'auto';
+          }
+          if (voidVeilRef.current) {
+            voidVeilRef.current.style.opacity = '0';
+          }
+        }
+        return;
+      }
+
+      wasAtRestRef.current = false;
+
+      // PASSO 1 (APENAS LEITURAS): lê toda a geometria de layout em lote único antes de qualquer escrita
       const compRect = compositionRef.current?.getBoundingClientRect();
-      const bhCenterX = compRect ? compRect.left + compRect.width * 0.5 : width * (isDesktop ? 0.72 : 0.5);
+      const leftRect = leftColRef.current?.getBoundingClientRect();
+      const rightRect = rightColRef.current?.getBoundingClientRect();
+
+      const eyebrowCenter = measureElementCenter(eyebrowRef.current, leftRect);
+      const titleCenter = measureElementCenter(titleRef.current, leftRect);
+      const descCenter = measureElementCenter(descRef.current, leftRect);
+      const ctaCenter = measureElementCenter(ctaRef.current, leftRect);
+      const counterCenter = measureElementCenter(counterRef.current, leftRect);
+      const railCenter = measureElementCenter(railRef.current, rightRect);
+      const modelCenter = measureElementCenter(modelCollapseRef.current, compRect);
+
+      // PASSO 2 (APENAS CÁLCULOS & ESCRITAS): zero layout thrashing
+      const bhCenterX = compRect
+        ? compRect.left + compRect.width * 0.5
+        : width * (isDesktop ? 0.72 : 0.5);
       const bhCenterY = compRect
         ? compRect.top + compRect.height * (isMobile ? 0.415 : 0.432)
         : height * 0.48;
@@ -155,11 +245,9 @@ export function HeroTraversalStage({
       const shiftX = (vpCenterX - bhCenterX) * frame.centerBlend;
       const shiftY = (vpCenterY - bhCenterY) * frame.centerBlend;
 
-      // Origem ativa das atrações gravitacionais durante a travessia (centro vivo do buraco negro)
       const targetSingularityX = bhCenterX + shiftX;
       const targetSingularityY = bhCenterY + shiftY;
 
-      // Filtro SVG leve de distorção gravitacional em GPU de alta qualidade
       const useSvgWarp = qualityTier === 'high';
       if (useSvgWarp && displacementRef.current) {
         const warpAmount =
@@ -169,18 +257,11 @@ export function HeroTraversalStage({
 
       const filterRef = `#${warpFilterId}`;
 
-      const eyebrowPull = computePullTowardSingularity(
-        eyebrowRef.current,
-        leftColRef.current,
-        targetSingularityX,
-        targetSingularityY,
-        0.52
-      );
       applyCollapseStyle(
         eyebrowRef.current,
         p,
         {
-          ...eyebrowPull,
+          ...pullFromMeasured(eyebrowCenter, targetSingularityX, targetSingularityY, 0.52),
           stretchFactor: isDesktop ? 0.24 : 0.16,
           skewDeg: isDesktop ? -7 : -3,
           rotateDeg: isDesktop ? 4 : 2,
@@ -190,18 +271,11 @@ export function HeroTraversalStage({
         filterRef
       );
 
-      const titlePull = computePullTowardSingularity(
-        titleRef.current,
-        leftColRef.current,
-        targetSingularityX,
-        targetSingularityY,
-        0.58
-      );
       applyCollapseStyle(
         titleRef.current,
         p,
         {
-          ...titlePull,
+          ...pullFromMeasured(titleCenter, targetSingularityX, targetSingularityY, 0.58),
           stretchFactor: isDesktop ? 0.28 : 0.18,
           skewDeg: isDesktop ? -8 : -4,
           rotateDeg: isDesktop ? 3 : 2,
@@ -211,18 +285,11 @@ export function HeroTraversalStage({
         filterRef
       );
 
-      const descPull = computePullTowardSingularity(
-        descRef.current,
-        leftColRef.current,
-        targetSingularityX,
-        targetSingularityY,
-        0.54
-      );
       applyCollapseStyle(
         descRef.current,
         p,
         {
-          ...descPull,
+          ...pullFromMeasured(descCenter, targetSingularityX, targetSingularityY, 0.54),
           stretchFactor: isDesktop ? 0.22 : 0.15,
           skewDeg: isDesktop ? -6 : -3,
           rotateDeg: -2,
@@ -232,63 +299,35 @@ export function HeroTraversalStage({
         filterRef
       );
 
-      const ctaPull = computePullTowardSingularity(
-        ctaRef.current,
-        leftColRef.current,
-        targetSingularityX,
-        targetSingularityY,
-        0.5
-      );
       applyCollapseStyle(ctaRef.current, p, {
-        ...ctaPull,
+        ...pullFromMeasured(ctaCenter, targetSingularityX, targetSingularityY, 0.5),
         stretchFactor: isDesktop ? 0.18 : 0.14,
         skewDeg: isDesktop ? -5 : -2,
         rotateDeg: isDesktop ? -3 : -2,
         resistance: 0.94,
       });
 
-      const counterPull = computePullTowardSingularity(
-        counterRef.current,
-        leftColRef.current,
-        targetSingularityX,
-        targetSingularityY,
-        0.48
-      );
       applyCollapseStyle(counterRef.current, p, {
-        ...counterPull,
+        ...pullFromMeasured(counterCenter, targetSingularityX, targetSingularityY, 0.48),
         stretchFactor: isDesktop ? 0.16 : 0.12,
         skewDeg: isDesktop ? -4 : -2,
         rotateDeg: isDesktop ? -3 : -2,
         resistance: 0.7,
       });
 
-      const railPull = computePullTowardSingularity(
-        railRef.current,
-        rightColRef.current,
-        targetSingularityX,
-        targetSingularityY,
-        0.62
-      );
       applyCollapseStyle(railRef.current, p, {
-        ...railPull,
+        ...pullFromMeasured(railCenter, targetSingularityX, targetSingularityY, 0.62),
         stretchFactor: 0.14,
         skewDeg: 4,
         rotateDeg: -6,
         resistance: 0.72,
       });
 
-      const modelPull = computePullTowardSingularity(
-        modelCollapseRef.current,
-        compositionRef.current,
-        targetSingularityX,
-        targetSingularityY,
-        0.95
-      );
       applyCollapseStyle(
         modelCollapseRef.current,
         p,
         {
-          ...modelPull,
+          ...pullFromMeasured(modelCenter, targetSingularityX, targetSingularityY, 0.95),
           stretchFactor: 0.14,
           skewDeg: -2.5,
           rotateDeg: -7,
@@ -298,7 +337,6 @@ export function HeroTraversalStage({
         filterRef
       );
 
-      // Moldura wreath é a camada mais próxima da câmera: acelera antes do buraco negro até sair naturalmente da viewport
       if (wreathTransformRef.current) {
         wreathTransformRef.current.style.transform = `translate3d(${shiftX.toFixed(
           2
@@ -311,7 +349,6 @@ export function HeroTraversalStage({
           frame.wreathBlurPx > 0.05 ? `blur(${frame.wreathBlurPx}px)` : 'none';
       }
 
-      // Posicionamento e expansão do buraco negro sem conflito com translate(-50%, -50%) do wrapper pai
       const blackholeTransform = `translate3d(${shiftX.toFixed(
         2
       )}px, ${shiftY.toFixed(2)}px, 0) scale(${frame.scale})`;
@@ -336,16 +373,14 @@ export function HeroTraversalStage({
       if (voidVeilRef.current) {
         voidVeilRef.current.style.opacity = String(frame.voidVeilOpacity);
       }
-
-      if (scrollHintRef.current) {
-        const hintOpacity = p < 0.08 ? Math.max(0, 1 - p / 0.08) : 0;
-        scrollHintRef.current.style.opacity = String(hintOpacity.toFixed(3));
-      }
     };
 
     applyFrame(scrollYProgress.get());
     const unsub = scrollYProgress.on('change', applyFrame);
-    const onResize = () => applyFrame(scrollYProgress.get());
+    const onResize = () => {
+      wasAtRestRef.current = false;
+      applyFrame(scrollYProgress.get());
+    };
     window.addEventListener('resize', onResize, { passive: true });
 
     return () => {
@@ -354,9 +389,9 @@ export function HeroTraversalStage({
     };
   }, [scrollYProgress, progressMv, qualityTier, warpFilterId]);
 
-  // Rotação contínua exclusivamente anti-horária com aceleração progressiva e impulso suavizado pelo scroll
+  // Rotação contínua exclusivamente anti-horária (suspende durante intro, aba oculta ou após p >= 0.78)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !portalRevealed) return;
 
     let rafId = 0;
     let lastTime = performance.now();
@@ -367,7 +402,17 @@ export function HeroTraversalStage({
     const MAX_VELOCITY_BOOST = 82.0;
     const MAX_TOTAL_DEG_PER_SEC = 112.0;
 
+    const shouldRun = () =>
+      (typeof document === 'undefined' || document.visibilityState !== 'hidden') &&
+      progressRef.current < 0.78;
+
     const tick = (now: number) => {
+      if (!shouldRun()) {
+        rafId = 0;
+        smoothedBoostRef.current = 0;
+        return;
+      }
+
       const rawDt = (now - lastTime) / 1000;
       lastTime = now;
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
@@ -377,44 +422,58 @@ export function HeroTraversalStage({
       lastScrollYRef.current = currentScrollY;
 
       const p = progressRef.current;
-      const isVisible =
-        (typeof document === 'undefined' || document.visibilityState !== 'hidden') && p < 0.78;
-
-      if (isVisible) {
-        const scrollSpeedPxPerSec = deltaScrollPx / dt;
-        const targetBoost = Math.min(MAX_VELOCITY_BOOST, scrollSpeedPxPerSec * 0.032);
-        const dampRate = targetBoost > smoothedBoostRef.current ? 11.0 : 4.2;
-        const alpha = 1 - Math.exp(-dampRate * dt);
-        smoothedBoostRef.current += (targetBoost - smoothedBoostRef.current) * alpha;
-        if (targetBoost === 0 && smoothedBoostRef.current < 0.02) {
-          smoothedBoostRef.current = 0;
-        }
-
-        const progressSpeed =
-          BASE_DEG_PER_SEC + smootherstep(0.06, 0.68, p) * PROGRESS_EXTRA_DEG_PER_SEC;
-        const effectiveSpeed = Math.min(
-          MAX_TOTAL_DEG_PER_SEC,
-          progressSpeed + smoothedBoostRef.current
-        );
-
-        // Sempre subtrai para garantir sentido exclusivamente anti-horário (inclusive ao rolar para cima)
-        angleDegRef.current = (angleDegRef.current - effectiveSpeed * dt) % 360000;
-
-        if (wreathRotateRef.current) {
-          wreathRotateRef.current.style.transform = `rotate(${angleDegRef.current.toFixed(3)}deg)`;
-        }
-      } else {
+      const scrollSpeedPxPerSec = deltaScrollPx / dt;
+      const targetBoost = Math.min(MAX_VELOCITY_BOOST, scrollSpeedPxPerSec * 0.032);
+      const dampRate = targetBoost > smoothedBoostRef.current ? 11.0 : 4.2;
+      const alpha = 1 - Math.exp(-dampRate * dt);
+      smoothedBoostRef.current += (targetBoost - smoothedBoostRef.current) * alpha;
+      if (targetBoost === 0 && smoothedBoostRef.current < 0.02) {
         smoothedBoostRef.current = 0;
+      }
+
+      const progressSpeed =
+        BASE_DEG_PER_SEC + smootherstep(0.06, 0.68, p) * PROGRESS_EXTRA_DEG_PER_SEC;
+      const effectiveSpeed = Math.min(
+        MAX_TOTAL_DEG_PER_SEC,
+        progressSpeed + smoothedBoostRef.current
+      );
+
+      // Sempre subtrai para garantir sentido exclusivamente anti-horário (inclusive ao rolar para cima)
+      angleDegRef.current = (angleDegRef.current - effectiveSpeed * dt) % 360000;
+
+      if (wreathRotateRef.current) {
+        wreathRotateRef.current.style.transform = `rotate(${angleDegRef.current.toFixed(3)}deg)`;
       }
 
       rafId = window.requestAnimationFrame(tick);
     };
 
-    rafId = window.requestAnimationFrame(tick);
-    return () => {
-      window.cancelAnimationFrame(rafId);
+    const ensureLoop = () => {
+      if (!rafId && shouldRun()) {
+        lastTime = performance.now();
+        lastScrollYRef.current = window.scrollY;
+        rafId = window.requestAnimationFrame(tick);
+      }
     };
-  }, []);
+
+    ensureWreathLoopRef.current = ensureLoop;
+    ensureLoop();
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        ensureLoop();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      ensureWreathLoopRef.current = null;
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [portalRevealed]);
 
   return (
     <section

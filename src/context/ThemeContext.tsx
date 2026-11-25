@@ -30,9 +30,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const root = document.documentElement;
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    if (!isFirstMount.current && !reducedMotion) {
+    if (!isFirstMount.current) {
       root.classList.add('theme-transitioning');
       if (transitionTimer.current) {
         window.clearTimeout(transitionTimer.current);

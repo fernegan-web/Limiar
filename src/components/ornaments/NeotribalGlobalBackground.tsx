@@ -60,40 +60,53 @@ export function NeotribalGlobalBackground() {
   );
 
   useEffect(() => {
-    const updateMetrics = () => {
+    let rafId = 0;
+    let lastTravel = -1;
+
+    const measure = () => {
+      rafId = 0;
       const containerEl = containerRef.current;
       const imgEl = imageRef.current;
       if (!containerEl || !imgEl) return;
 
-      const pageHeight = containerEl.getBoundingClientRect().height;
+      const pageHeight = containerEl.offsetHeight;
       const viewportHeight = window.innerHeight || 900;
-      const imgRectWidth = imgEl.getBoundingClientRect().width;
-      const naturalImgHeight = imgRectWidth > 0 ? imgRectWidth * 1.5 : viewportHeight * 1.5;
+      const imgWidth = imgEl.offsetWidth;
+      const naturalImgHeight = imgWidth > 0 ? imgWidth * 1.5 : viewportHeight * 1.5;
 
       const travel = computeGlobalBgScrollTravel(
         pageHeight,
         viewportHeight,
         naturalImgHeight
       );
-      maxTravelMv.set(travel);
+      if (Math.abs(travel - lastTravel) > 0.5) {
+        lastTravel = travel;
+        maxTravelMv.set(travel);
+      }
     };
 
-    updateMetrics();
+    const scheduleMeasure = () => {
+      if (!rafId) {
+        rafId = window.requestAnimationFrame(measure);
+      }
+    };
+
+    measure();
 
     const ro =
       typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => updateMetrics())
+        ? new ResizeObserver(scheduleMeasure)
         : null;
 
     if (ro) {
       if (containerRef.current) ro.observe(containerRef.current);
-      if (imageRef.current) ro.observe(imageRef.current);
     }
 
-    window.addEventListener('resize', updateMetrics, { passive: true });
+    window.addEventListener('resize', scheduleMeasure, { passive: true });
     return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
       ro?.disconnect();
-      window.removeEventListener('resize', updateMetrics);
+      window.removeEventListener('resize', scheduleMeasure);
     };
   }, [maxTravelMv]);
 
@@ -113,13 +126,23 @@ export function NeotribalGlobalBackground() {
           style={reducedMotion ? undefined : { x: cursorX, y: cursorY }}
           className="relative w-[103%] -left-[1.5%] will-change-transform"
         >
-          <img
-            ref={imageRef}
-            src={GLOBAL_NEOTRIBAL_ASSET}
-            alt=""
-            draggable={false}
-            className="w-full h-auto block mix-blend-normal opacity-[0.56] dark:opacity-[0.46] [mask-image:linear-gradient(to_bottom,transparent_0%,black_3%,black_97%,transparent_100%)] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
-          />
+          <picture className="block w-full">
+            <source
+              srcSet="/assets/global-neotribal-720.webp 720w, /assets/global-neotribal-1024.webp 1024w"
+              sizes="103vw"
+              type="image/webp"
+            />
+            <img
+              ref={imageRef}
+              src={GLOBAL_NEOTRIBAL_ASSET}
+              alt=""
+              width={1024}
+              height={1536}
+              decoding="async"
+              draggable={false}
+              className="w-full h-auto block mix-blend-normal opacity-[0.56] dark:opacity-[0.46] [mask-image:linear-gradient(to_bottom,transparent_0%,black_3%,black_97%,transparent_100%)] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+            />
+          </picture>
         </motion.div>
       </motion.div>
     </div>

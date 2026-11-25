@@ -14,7 +14,12 @@ import { Reveal } from '../components/ui/Reveal';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
 import { useRouter } from '../context/RouterContext';
 import { ThresholdScrollParallax } from '../motion/ThresholdPrimitives';
-import { DEMO_IMAGES } from '../data/demoCatalog';
+import {
+  DEMO_CATEGORIES,
+  DEMO_COLLECTIONS,
+  DEMO_IMAGES,
+  DEMO_PRODUCTS,
+} from '../data/demoCatalog';
 import {
   fetchCategories,
   fetchCollections,
@@ -50,9 +55,11 @@ const HERO_SLIDES: HeroSlide[] = [
 
 export function HomePage() {
   const { navigate } = useRouter();
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>(() =>
+    DEMO_PRODUCTS.filter((p) => p.featured)
+  );
+  const [categories, setCategories] = useState<Category[]>(() => DEMO_CATEGORIES);
+  const [collections, setCollections] = useState<Collection[]>(() => DEMO_COLLECTIONS);
   const [activeSlideIndex] = useState(0);
 
   // Newsletter state
@@ -214,6 +221,8 @@ export function HomePage() {
               <ResilientImage
                 src={DEMO_IMAGES.bannerEclipse}
                 alt="Eclipse sobre atmosfera underground Limiar"
+                sizes="(max-width: 1024px) 100vw, 1360px"
+                loading="lazy"
                 className="w-full h-full object-cover object-[65%_22%] opacity-78 dark:opacity-85"
               />
             </ThresholdScrollParallax>

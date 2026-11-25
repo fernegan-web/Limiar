@@ -95,7 +95,10 @@ export function HeroThresholdComposition({
               transition={{ duration: 0.52, delay: 0, ease: THRESHOLD_EASE }}
               className="w-full"
             >
-              <div className="limiar-blackhole-pulse">
+              <div
+                className="limiar-blackhole-pulse"
+                style={!portalRevealed ? { animationPlayState: 'paused' } : undefined}
+              >
                 <ProceduralBlackHole
                   progressMv={progressMv}
                   onQualityChange={onBlackHoleQualityChange}
@@ -129,12 +132,23 @@ export function HeroThresholdComposition({
                   ref={collapseRefs?.wreathBlurRef}
                   className="w-full h-full will-change-[filter]"
                 >
-                  <img
-                    src="/assets/aistudio/Moldura_Wreath_Cibern_tica_Prateada_78a3f5f9.png"
-                    alt=""
-                    draggable={false}
-                    className="w-full h-full block object-contain mix-blend-normal opacity-[0.84] dark:opacity-[0.88] dark:brightness-[1.02] dark:contrast-[1.06] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
-                  />
+                  <picture>
+                    <source
+                      srcSet="/assets/hero-wreath-640.webp 640w, /assets/hero-wreath-960.webp 960w"
+                      sizes="(max-width: 640px) 104vw, 680px"
+                      type="image/webp"
+                    />
+                    <img
+                      src="/assets/aistudio/Moldura_Wreath_Cibern_tica_Prateada_78a3f5f9.png"
+                      alt=""
+                      width={1254}
+                      height={1254}
+                      decoding="async"
+                      fetchPriority="high"
+                      draggable={false}
+                      className="w-full h-full block object-contain mix-blend-normal opacity-[0.84] dark:opacity-[0.88] dark:brightness-[1.02] dark:contrast-[1.06] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                    />
+                  </picture>
                 </div>
               </motion.div>
             </div>
@@ -164,10 +178,18 @@ export function HeroThresholdComposition({
             transition={{ duration: 0.5, delay: 0.09, ease: THRESHOLD_EASE }}
           >
             <picture>
-              <source srcSet="/assets/hero-model.webp" type="image/webp" />
+              <source
+                srcSet="/assets/hero-model-640.webp 640w, /assets/hero-model-1080.webp 1080w, /assets/hero-model.webp 1312w"
+                sizes="(max-width: 640px) 94vw, 540px"
+                type="image/webp"
+              />
               <img
                 src="/assets/hero-model.png"
                 alt={modelAlt}
+                width={1312}
+                height={1199}
+                decoding="async"
+                fetchPriority="high"
                 draggable={false}
                 className="w-full h-auto block object-contain object-bottom [mask-image:linear-gradient(to_bottom,black_0%,black_85%,transparent_100%)]"
               />
@@ -200,7 +222,10 @@ export function HeroThresholdComposition({
               transition={{ duration: 0.52, delay: 0, ease: THRESHOLD_EASE }}
               className="w-full h-full"
             >
-              <div className="limiar-blackhole-pulse w-full h-full">
+              <div
+                className="limiar-blackhole-pulse w-full h-full"
+                style={!portalRevealed ? { animationPlayState: 'paused' } : undefined}
+              >
                 <div
                   ref={frontBlackholeHostRef}
                   className="w-full h-full opacity-0"

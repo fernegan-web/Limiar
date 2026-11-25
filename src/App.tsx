@@ -1,7 +1,4 @@
-import React, { useState } from 'react';
-import { AccountModal } from './components/commerce/AccountModal';
-import { CartDrawer } from './components/commerce/CartDrawer';
-import { SearchOverlay } from './components/commerce/SearchOverlay';
+import React, { Suspense, lazy, useState } from 'react';
 import { Footer } from './components/layout/Footer';
 import { Navbar } from './components/layout/Navbar';
 import { PortalIntroOverlay } from './components/intro/PortalIntroOverlay';
@@ -16,20 +13,44 @@ import {
   ThresholdMotionProvider,
   useThresholdPointer,
 } from './motion/ThresholdMotionProvider';
-import { AboutPage } from './pages/AboutPage';
-import { CatalogPage } from './pages/CatalogPage';
-import { CollectionsPage } from './pages/CollectionsPage';
-import { ContactPage } from './pages/ContactPage';
 import { HomePage } from './pages/HomePage';
-import { ProductDetailPage } from './pages/ProductDetailPage';
+
+const CatalogPage = lazy(() =>
+  import('./pages/CatalogPage').then((m) => ({ default: m.CatalogPage }))
+);
+const CollectionsPage = lazy(() =>
+  import('./pages/CollectionsPage').then((m) => ({ default: m.CollectionsPage }))
+);
+const AboutPage = lazy(() =>
+  import('./pages/AboutPage').then((m) => ({ default: m.AboutPage }))
+);
+const ContactPage = lazy(() =>
+  import('./pages/ContactPage').then((m) => ({ default: m.ContactPage }))
+);
+const ProductDetailPage = lazy(() =>
+  import('./pages/ProductDetailPage').then((m) => ({ default: m.ProductDetailPage }))
+);
+const CartDrawer = lazy(() =>
+  import('./components/commerce/CartDrawer').then((m) => ({ default: m.CartDrawer }))
+);
+const SearchOverlay = lazy(() =>
+  import('./components/commerce/SearchOverlay').then((m) => ({ default: m.SearchOverlay }))
+);
+const AccountModal = lazy(() =>
+  import('./components/commerce/AccountModal').then((m) => ({ default: m.AccountModal }))
+);
 
 function AppShell() {
   const { pathname, commitScroll } = useRouter();
   const { markPortalRevealed } = useThresholdPointer();
-  const { isDrawerOpen } = useCart();
+  const { isDrawerOpen, items } = useCart();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchMounted, setSearchMounted] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [accountMounted, setAccountMounted] = useState(false);
   const [introActive, setIntroActive] = useState(true);
+
+  const shouldMountCart = isDrawerOpen || items.length > 0;
 
   const renderPage = () => {
     if (pathname === '/' || pathname === '') {
@@ -64,21 +85,39 @@ function AppShell() {
       <div className="limiar-grain" aria-hidden="true" />
 
       <Navbar
-        onOpenSearch={() => setSearchOpen(true)}
-        onOpenAccount={() => setAccountOpen(true)}
+        onOpenSearch={() => {
+          setSearchMounted(true);
+          setSearchOpen(true);
+        }}
+        onOpenAccount={() => {
+          setAccountMounted(true);
+          setAccountOpen(true);
+        }}
       />
 
       <main className="relative z-10 flex-1">
         <PortalRouteTransition routeKey={pathname || '/'} onTransitionScroll={commitScroll}>
-          {renderPage()}
+          <Suspense fallback={null}>{renderPage()}</Suspense>
         </PortalRouteTransition>
       </main>
 
       <Footer />
 
-      <CartDrawer />
-      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
-      <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)} />
+      {shouldMountCart && (
+        <Suspense fallback={null}>
+          <CartDrawer />
+        </Suspense>
+      )}
+      {searchMounted && (
+        <Suspense fallback={null}>
+          <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
+        </Suspense>
+      )}
+      {accountMounted && (
+        <Suspense fallback={null}>
+          <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)} />
+        </Suspense>
+      )}
       <WhatsAppFloatingButton hidden={searchOpen || accountOpen || isDrawerOpen} />
       <OrbitalCursor />
       {introActive && (

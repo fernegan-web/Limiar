@@ -8,14 +8,10 @@ interface RevealProps {
 
 /**
  * Scroll-reveal performático com IntersectionObserver + verificação de viewport.
- * Garante conteúdo acessível mesmo sem JS, com prefers-reduced-motion ou rolagem rápida.
  */
 export function Reveal({ children, delayMs = 0, className = '' }: RevealProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  });
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (visible) return;

@@ -206,10 +206,17 @@ export function PortalIntroOverlay({
           className="flex pointer-events-none absolute inset-0 items-center justify-center will-change-[transform,opacity]"
         >
           <picture className="w-[min(115vw,1060px)] max-w-none flex items-center justify-center">
-            <source srcSet="/assets/intro-mist.webp" type="image/webp" />
+            <source
+              srcSet="/assets/intro-mist-640.webp 640w, /assets/intro-mist-1060.webp 1060w"
+              sizes="(max-width: 640px) 115vw, min(115vw, 1060px)"
+              type="image/webp"
+            />
             <img
               src="/assets/aistudio/Buraco_Negro_em_N_voa_C_smica_1a774422.png"
               alt=""
+              width={1060}
+              height={530}
+              decoding="async"
               draggable={false}
               className="w-full h-auto block object-contain mix-blend-normal dark:mix-blend-screen opacity-[0.88] dark:opacity-[0.62] [mask-image:radial-gradient(ellipse_88%_82%_at_50%_50%,black_45%,transparent_94%)]"
             />
@@ -223,10 +230,17 @@ export function PortalIntroOverlay({
           className="pointer-events-none absolute inset-0 flex items-center justify-center will-change-[transform,opacity]"
         >
           <picture className="flex items-center justify-center w-[100vw] max-w-[1620px] max-sm:w-auto max-sm:h-[88vh]">
-            <source srcSet="/assets/intro-tribals.webp" type="image/webp" />
+            <source
+              srcSet="/assets/intro-tribals-768.webp 768w, /assets/intro-tribals-1280.webp 1280w"
+              sizes="100vw"
+              type="image/webp"
+            />
             <img
               src="/assets/aistudio/Ornamentos_Tribais_Neon_Sim_tricos_858157d2.png"
               alt=""
+              width={1280}
+              height={640}
+              decoding="async"
               draggable={false}
               className="w-full h-auto max-sm:h-full max-sm:w-auto max-sm:max-w-none block object-contain opacity-[0.38] contrast-[1.04] dark:opacity-[0.58] dark:contrast-100"
             />
@@ -243,10 +257,17 @@ export function PortalIntroOverlay({
         className="pointer-events-none absolute flex items-center justify-center w-[min(92vw,720px)] sm:w-[min(78vw,820px)] lg:w-[min(64vw,900px)] aspect-[3/2] will-change-[transform,opacity]"
       >
         <picture className="w-full h-full flex items-center justify-center">
-          <source srcSet="/assets/intro-filaments.webp" type="image/webp" />
+          <source
+            srcSet="/assets/intro-filaments-600.webp 600w, /assets/intro-filaments-960.webp 960w"
+            sizes="(max-width: 640px) 92vw, min(64vw, 900px)"
+            type="image/webp"
+          />
           <img
             src="/assets/aistudio/V_rtice_Espectral_Neon_em_Halo_79c42089.png"
             alt=""
+            width={960}
+            height={640}
+            decoding="async"
             draggable={false}
             className="w-full h-full block object-contain opacity-[0.68] brightness-[0.84] contrast-[1.08] dark:opacity-[0.88] dark:brightness-100 dark:contrast-100 dark:mix-blend-screen"
           />
@@ -306,10 +327,18 @@ export function PortalIntroOverlay({
         className="pointer-events-none absolute flex items-center justify-center w-[min(66vw,410px)] sm:w-[min(52vw,460px)] lg:w-[min(40vw,500px)] aspect-square will-change-[transform,opacity]"
       >
         <picture className="w-full h-full flex items-center justify-center">
-          <source srcSet="/assets/intro-ring.webp" type="image/webp" />
+          <source
+            srcSet="/assets/intro-ring-520.webp 520w, /assets/intro-ring-800.webp 800w"
+            sizes="(max-width: 640px) 66vw, 500px"
+            type="image/webp"
+          />
             <img
               src="/assets/aistudio/Portal_Ritual_Et_reo_Limiar_881e8aa3.png"
               alt=""
+              width={800}
+              height={800}
+              fetchPriority="high"
+              decoding="async"
               draggable={false}
               className="w-full h-full block object-contain opacity-[0.82] brightness-[0.82] contrast-[1.12] dark:opacity-[0.94] dark:brightness-100 dark:contrast-105"
             />
@@ -344,12 +373,23 @@ export function PortalIntroOverlay({
         style={{ opacity: 0 }}
         className="pointer-events-none relative z-10 flex items-center justify-center will-change-[transform,opacity,filter]"
       >
-        <img
-          src="/assets/aistudio/LIMIAR_LOGO_d4da5a59.png"
-          alt="Limiar"
-          draggable={false}
-          className="w-[144px] sm:w-[178px] lg:w-[206px] h-auto object-contain select-none mix-blend-screen"
-        />
+        <picture className="flex items-center justify-center">
+          <source
+            srcSet="/assets/limiar-logo-256.webp 256w, /assets/limiar-logo-512.webp 512w"
+            sizes="(max-width: 640px) 160px, 220px"
+            type="image/webp"
+          />
+          <img
+            src="/assets/aistudio/LIMIAR_LOGO_d4da5a59.png"
+            alt="Limiar"
+            width={512}
+            height={512}
+            fetchPriority="high"
+            decoding="sync"
+            draggable={false}
+            className="w-[144px] sm:w-[178px] lg:w-[206px] h-auto object-contain select-none mix-blend-screen"
+          />
+        </picture>
       </div>
     </div>
   );

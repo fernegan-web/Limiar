@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import { useReducedMotion } from 'motion/react';
 import {
   ORBITAL_CURSOR_CLICK_PULSE_MS,
   ORBITAL_CURSOR_LERP_RATE,
@@ -16,10 +15,9 @@ const ACTIVE_CLASS = 'limiar-custom-cursor';
  * - Anel externo fino com interpolação suave e leve atraso via requestAnimationFrame.
  * - Zero re-renderizações React contínuas: atualizações diretas via DOM/CSS.
  * - Oculta o cursor nativo somente após confirmar ponteiro fino ativo e ciclo RAF operante.
- * - Desativa automaticamente em dispositivos touch ou prefers-reduced-motion.
+ * - Desativa automaticamente em dispositivos touch.
  */
 export function OrbitalCursor() {
-  const prefersReduced = Boolean(useReducedMotion());
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dotRef = useRef<HTMLDivElement | null>(null);
   const ringRef = useRef<HTMLDivElement | null>(null);
@@ -32,15 +30,10 @@ export function OrbitalCursor() {
     const ringEl = ringRef.current;
     if (!rootEl || !dotEl || !ringEl) return;
 
-    const reducedMql = window.matchMedia('(prefers-reduced-motion: reduce)');
     const finePointerMql = window.matchMedia('(pointer: fine)');
     const hoverNoneMql = window.matchMedia('(hover: none)');
 
-    const isEligible = () =>
-      !prefersReduced &&
-      !reducedMql.matches &&
-      finePointerMql.matches &&
-      !hoverNoneMql.matches;
+    const isEligible = () => finePointerMql.matches && !hoverNoneMql.matches;
 
     let rafId = 0;
     let lastTime = 0;
@@ -221,7 +214,6 @@ export function OrbitalCursor() {
     window.addEventListener('blur', handleMouseLeave);
     document.addEventListener('mouseleave', handleMouseLeave);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    reducedMql.addEventListener?.('change', handleCapabilityChange);
     finePointerMql.addEventListener?.('change', handleCapabilityChange);
 
     if (!isEligible()) {
@@ -238,10 +230,9 @@ export function OrbitalCursor() {
       window.removeEventListener('blur', handleMouseLeave);
       document.removeEventListener('mouseleave', handleMouseLeave);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      reducedMql.removeEventListener?.('change', handleCapabilityChange);
       finePointerMql.removeEventListener?.('change', handleCapabilityChange);
     };
-  }, [prefersReduced]);
+  }, []);
 
   return (
     <div
