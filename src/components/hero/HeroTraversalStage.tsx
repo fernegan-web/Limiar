@@ -94,6 +94,7 @@ export function HeroTraversalStage({
   const scrollHintRef = useRef<HTMLDivElement | null>(null);
 
   const blackholeOuterRef = useRef<HTMLDivElement | null>(null);
+  const blackholeFrontOuterRef = useRef<HTMLDivElement | null>(null);
   const wreathTransformRef = useRef<HTMLDivElement | null>(null);
   const wreathRotateRef = useRef<HTMLDivElement | null>(null);
   const wreathBlurRef = useRef<HTMLDivElement | null>(null);
@@ -311,11 +312,19 @@ export function HeroTraversalStage({
       }
 
       // Posicionamento e expansão do buraco negro sem conflito com translate(-50%, -50%) do wrapper pai
+      const blackholeTransform = `translate3d(${shiftX.toFixed(
+        2
+      )}px, ${shiftY.toFixed(2)}px, 0) scale(${frame.scale})`;
+      const blackholeOpacity = String(frame.heroVisibility);
+
       if (blackholeOuterRef.current) {
-        blackholeOuterRef.current.style.transform = `translate3d(${shiftX.toFixed(
-          2
-        )}px, ${shiftY.toFixed(2)}px, 0) scale(${frame.scale})`;
-        blackholeOuterRef.current.style.opacity = String(frame.heroVisibility);
+        blackholeOuterRef.current.style.transform = blackholeTransform;
+        blackholeOuterRef.current.style.opacity = blackholeOpacity;
+      }
+
+      if (blackholeFrontOuterRef.current) {
+        blackholeFrontOuterRef.current.style.transform = blackholeTransform;
+        blackholeFrontOuterRef.current.style.opacity = blackholeOpacity;
       }
 
       if (heroOverlayGroupRef.current) {
@@ -439,10 +448,13 @@ export function HeroTraversalStage({
       </svg>
 
       {/* Palco Sticky: fixa a experiência durante os 3 estágios sem scroll hijacking */}
-      <div className="sticky top-0 h-[100dvh] w-full overflow-hidden flex items-center">
+      <div className="sticky top-0 min-h-[100dvh] md:h-[100dvh] w-full overflow-x-clip md:overflow-hidden flex flex-col md:flex-row md:items-center">
         {/* CAMADA DE TRAVESSIA: HERO + SINGULARIDADE PROCEDURAL */}
-        <div ref={heroOverlayGroupRef} className="relative z-10 w-full">
-          <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-12 sm:pt-14 pb-6 sm:pb-10">
+        <div
+          ref={heroOverlayGroupRef}
+          className="absolute inset-x-0 top-0 h-[100dvh] md:relative md:inset-auto md:h-auto z-10 w-full flex items-center"
+        >
+          <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-12 sm:pt-14 pb-6 sm:pb-10 w-full">
             <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-4 sm:gap-6">
               {/* Coluna Esquerda: Texto & CTA */}
               <div
@@ -533,6 +545,7 @@ export function HeroTraversalStage({
                   collapseRefs={{
                     compositionRef,
                     blackholeOuterRef,
+                    blackholeFrontOuterRef,
                     wreathTransformRef,
                     wreathRotateRef,
                     wreathBlurRef,

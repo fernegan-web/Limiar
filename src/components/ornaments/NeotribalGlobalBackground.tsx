@@ -118,7 +118,7 @@ export function NeotribalGlobalBackground() {
             src={GLOBAL_NEOTRIBAL_ASSET}
             alt=""
             draggable={false}
-            className="w-full h-auto block opacity-[0.62] dark:opacity-[0.46] [mask-image:linear-gradient(to_bottom,transparent_0%,black_3%,black_97%,transparent_100%)] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+            className="w-full h-auto block mix-blend-normal opacity-[0.56] dark:opacity-[0.46] [mask-image:linear-gradient(to_bottom,transparent_0%,black_3%,black_97%,transparent_100%)] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
           />
         </motion.div>
       </motion.div>

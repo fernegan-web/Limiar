@@ -199,11 +199,11 @@ export function PortalIntroOverlay({
           className="pointer-events-none absolute w-[min(92vw,700px)] aspect-square rounded-full bg-[radial-gradient(circle,rgba(161,138,200,0.20)_0%,rgba(164,199,90,0.14)_36%,transparent_72%)] dark:bg-[radial-gradient(circle,rgba(161,138,200,0.28)_0%,rgba(164,199,90,0.18)_36%,transparent_72%)] will-change-[opacity]"
         />
 
-        {/* Camada auxiliar: névoa cósmica de singularidade (apenas dark mode, screen) */}
+        {/* Camada auxiliar: névoa cósmica de singularidade e buraco negro */}
         <div
           ref={mistRef}
           style={{ opacity: 0 }}
-          className="hidden dark:flex pointer-events-none absolute inset-0 items-center justify-center will-change-[transform,opacity]"
+          className="flex pointer-events-none absolute inset-0 items-center justify-center will-change-[transform,opacity]"
         >
           <picture className="w-[min(115vw,1060px)] max-w-none flex items-center justify-center">
             <source srcSet="/assets/intro-mist.webp" type="image/webp" />
@@ -211,7 +211,7 @@ export function PortalIntroOverlay({
               src="/assets/aistudio/Buraco_Negro_em_N_voa_C_smica_1a774422.png"
               alt=""
               draggable={false}
-              className="w-full h-auto block object-contain opacity-[0.62] mix-blend-screen [mask-image:radial-gradient(ellipse_88%_82%_at_50%_50%,black_45%,transparent_94%)]"
+              className="w-full h-auto block object-contain mix-blend-normal dark:mix-blend-screen opacity-[0.88] dark:opacity-[0.62] [mask-image:radial-gradient(ellipse_88%_82%_at_50%_50%,black_45%,transparent_94%)]"
             />
           </picture>
         </div>
@@ -337,7 +337,7 @@ export function PortalIntroOverlay({
       </div>
 
       {/* ====================================================================
-          CAMADA 07: LOGO OFICIAL DE LIMIAR CENTRALIZADA (BRANCA NO DARK / PRETA NO LIGHT)
+          CAMADA 07: LOGO OFICIAL DE LIMIAR CENTRALIZADA (BRANCA NOS DOIS TEMAS SOBRE O HORIZONTE NEGRO)
           ==================================================================== */}
       <div
         ref={logoRef}
@@ -348,7 +348,7 @@ export function PortalIntroOverlay({
           src="/assets/aistudio/LIMIAR_LOGO_d4da5a59.png"
           alt="Limiar"
           draggable={false}
-          className="w-[144px] sm:w-[178px] lg:w-[206px] h-auto object-contain select-none invert mix-blend-multiply dark:invert-0 dark:mix-blend-screen"
+          className="w-[144px] sm:w-[178px] lg:w-[206px] h-auto object-contain select-none mix-blend-screen"
         />
       </div>
     </div>

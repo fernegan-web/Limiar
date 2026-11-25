@@ -20,6 +20,7 @@ export const BLACKHOLE_FRAGMENT_SHADER = /* glsl */ `
   uniform vec2 uPointer;
   uniform float uLightMode;
   uniform float uComplexity;
+  uniform float uLayerPass;
 
   #define PI 3.14159265359
   #define TAU 6.28318530718
@@ -283,9 +284,9 @@ export const BLACKHOLE_FRAGMENT_SHADER = /* glsl */ `
     vec3 colorUv = vec3(0.631, 0.541, 0.784);   // #A18AC8
     vec3 coreWhite = vec3(0.97, 0.965, 0.94);   // Branco luminoso nos picos energéticos
 
-    // No Light Mode, aprofunda levemente os pigmentos para leitura nítida sobre fundo claro sem perder vibração
-    vec3 acidTone = mix(colorAcid, colorAcid * vec3(0.72, 0.78, 0.68), uLightMode * 0.65);
-    vec3 uvTone = mix(colorUv, colorUv * vec3(0.74, 0.68, 0.84), uLightMode * 0.62);
+    // Preserva exatamente a identidade cromática (#A4C75A e #A18AC8) sem escurecimento artificial no Light Mode
+    vec3 acidTone = colorAcid;
+    vec3 uvTone = colorUv;
 
     vec3 rearHue = mix(uvTone, acidTone, rearChromaMix);
     vec3 innerHue = mix(uvTone, acidTone, 0.20 + 0.24 * innerStreak);
@@ -323,23 +324,16 @@ export const BLACKHOLE_FRAGMENT_SHADER = /* glsl */ `
     float shadowMask = 1.0 - smoothstep(horizon * 0.965, horizon * 1.008, r);
     vec3 horizonCore = vec3(0.006, 0.006, 0.009);
 
-    // No Light Mode, micro-contorno apenas no limite imediato do anel de fótons (sem névoa externa)
-    float tightPhotonContrast =
-      exp(-max(r - horizon * 1.005, 0.0) / max(horizon * 0.028, 0.007)) *
-      uLightMode *
-      0.20 *
-      (1.0 - clamp(photonRing, 0.0, 1.0));
-
-    vec3 baseColor = mix(rearFinal, horizonCore, clamp(shadowMask + tightPhotonContrast, 0.0, 1.0));
+    vec3 baseColor = mix(rearFinal, horizonCore, shadowMask);
     float baseAlpha = max(rearLumAlpha, shadowMask);
 
-    // Corpo 3D escuro estriado da borda inferior frontal (estritamente dentro do corpo do disco frontal)
+    // Corpo 3D estriado preservado apenas no Dark Mode; no Light Mode apenas a sombra central permanece preta e opaca
     vec3 undersideBase = mix(
       vec3(0.022, 0.020, 0.030),
       mix(uvTone, acidTone, frontChromaMix) * 0.55,
       clamp(frontUndersideGlow * 2.2, 0.0, 1.0)
     );
-    float undersideAlpha = frontBodyMask * 0.92;
+    float undersideAlpha = frontBodyMask * 0.92 * (1.0 - uLightMode);
     baseColor = mix(baseColor, undersideBase, undersideAlpha * (1.0 - clamp(frontStream * 1.2, 0.0, 1.0)));
     baseAlpha = max(baseAlpha, undersideAlpha);
 
@@ -369,6 +363,15 @@ export const BLACKHOLE_FRAGMENT_SHADER = /* glsl */ `
     float engulfBoost = smoothstep(0.55, 0.68, uProgress);
     alpha = max(alpha, shadowMask * engulfBoost);
 
-    gl_FragColor = vec4(finalColor, clamp(alpha, 0.0, 1.0));
+    if (uLayerPass > 0.5) {
+      // Passagem independente exclusiva da matéria orbital frontal (à frente da modelo e da moldura)
+      gl_FragColor = vec4(frontFinal, clamp(frontLumAlpha * radialBoundary, 0.0, 1.0));
+    } else if (uLayerPass >= 0.0) {
+      // Passagem posterior exclusiva: horizonte de eventos, arcos gravitacionais e matéria orbital traseira
+      float rearOnlyAlpha = max(baseAlpha * radialBoundary, shadowMask * engulfBoost);
+      gl_FragColor = vec4(baseColor, clamp(rearOnlyAlpha, 0.0, 1.0));
+    } else {
+      gl_FragColor = vec4(finalColor, clamp(alpha, 0.0, 1.0));
+    }
   }
 `;

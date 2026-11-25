@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { motion, useSpring, useTransform, type MotionValue } from 'motion/react';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import type { BlackHoleQualityTier } from '../../motion/gravitationalTimeline';
@@ -8,6 +8,7 @@ import { ProceduralBlackHole } from './ProceduralBlackHole';
 export interface HeroCollapseRefs {
   compositionRef?: React.RefObject<HTMLDivElement | null>;
   blackholeOuterRef?: React.RefObject<HTMLDivElement | null>;
+  blackholeFrontOuterRef?: React.RefObject<HTMLDivElement | null>;
   wreathTransformRef?: React.RefObject<HTMLDivElement | null>;
   wreathRotateRef?: React.RefObject<HTMLDivElement | null>;
   wreathBlurRef?: React.RefObject<HTMLDivElement | null>;
@@ -38,6 +39,7 @@ export function HeroThresholdComposition({
 }: HeroThresholdCompositionProps) {
   const { nx, ny, portalRevealed } = useThresholdPointer();
   const shouldPlayEntrance = portalRevealed;
+  const frontBlackholeHostRef = useRef<HTMLDivElement | null>(null);
 
   // Camada 02 e 03 — Buraco negro e moldura wreath integrados no mesmo centro óptico
   const bhTargetX = useTransform(nx, [-1, 1], [
@@ -97,6 +99,7 @@ export function HeroThresholdComposition({
                 <ProceduralBlackHole
                   progressMv={progressMv}
                   onQualityChange={onBlackHoleQualityChange}
+                  frontContainerRef={frontBlackholeHostRef}
                 />
               </div>
             </motion.div>
@@ -130,7 +133,7 @@ export function HeroThresholdComposition({
                     src="/assets/aistudio/Moldura_Wreath_Cibern_tica_Prateada_78a3f5f9.png"
                     alt=""
                     draggable={false}
-                    className="w-full h-full block object-contain opacity-[0.84] brightness-[0.68] contrast-[1.22] dark:opacity-[0.88] dark:brightness-[1.02] dark:contrast-[1.06] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                    className="w-full h-full block object-contain mix-blend-normal opacity-[0.84] dark:opacity-[0.88] dark:brightness-[1.02] dark:contrast-[1.06] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
                   />
                 </div>
               </motion.div>
@@ -140,11 +143,11 @@ export function HeroThresholdComposition({
       </div>
 
       {/* ============================================================
-          CAMADA 04 — MODELO OFICIAL LIMIAR (PRIMEIRO PLANO)
+          CAMADA 04 — MODELO OFICIAL LIMIAR (ENTRE DISCO POSTERIOR E FRONTAL)
           ============================================================ */}
       <div
         ref={collapseRefs?.modelCollapseRef}
-        className="relative z-20 w-[94%] sm:w-[88%] lg:w-[95%] max-w-[540px] will-change-transform origin-center"
+        className="pointer-events-none absolute inset-x-0 mx-auto bottom-[21%] sm:bottom-[22%] z-20 w-[94%] sm:w-[88%] lg:w-[95%] max-w-[540px] will-change-transform origin-center"
       >
         <motion.div
           data-hero-layer="model"
@@ -170,6 +173,41 @@ export function HeroThresholdComposition({
               />
             </picture>
           </motion.div>
+        </motion.div>
+      </div>
+
+      {/* ============================================================
+          CAMADA 05 — MATÉRIA ORBITAL FRONTAL (ACIMA DA MODELO E DA MOLDURA)
+          Compartilha exatamente o mesmo centro, magnetismo, escala e
+          quadro de shader do buraco negro em camada z-30 sincronizada.
+          ============================================================ */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute top-[41.5%] sm:top-[43.2%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[148%] sm:w-[156%] lg:w-[156%] aspect-[1.32/1] max-w-none z-30 flex items-center justify-center"
+      >
+        <motion.div
+          style={{ x: bhX, y: bhY }}
+          className="relative w-full h-full flex items-center justify-center"
+        >
+          <div
+            ref={collapseRefs?.blackholeFrontOuterRef}
+            data-hero-layer="blackhole-front"
+            className="absolute inset-0 flex items-center justify-center will-change-transform origin-center"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={shouldPlayEntrance ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.52, delay: 0, ease: THRESHOLD_EASE }}
+              className="w-full h-full"
+            >
+              <div className="limiar-blackhole-pulse w-full h-full">
+                <div
+                  ref={frontBlackholeHostRef}
+                  className="w-full h-full opacity-0"
+                />
+              </div>
+            </motion.div>
+          </div>
         </motion.div>
       </div>
     </div>

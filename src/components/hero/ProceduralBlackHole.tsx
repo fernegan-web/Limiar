@@ -14,12 +14,14 @@ import type { BlackHoleEngineController } from './blackholeEngine';
 interface ProceduralBlackHoleProps {
   progressMv?: MotionValue<number>;
   onQualityChange?: (tier: BlackHoleQualityTier) => void;
+  frontContainerRef?: React.RefObject<HTMLDivElement | null>;
   className?: string;
 }
 
 export function ProceduralBlackHole({
   progressMv,
   onQualityChange,
+  frontContainerRef,
   className = '',
 }: ProceduralBlackHoleProps) {
   const { theme } = useTheme();
@@ -94,12 +96,8 @@ export function ProceduralBlackHole({
     onQualityChange?.(qualityTier);
   }, [qualityTier, onQualityChange]);
 
-  // Carregamento assíncrono do motor WebGL/Three.js após abertura do portal
+  // Inicialização antecipada em segundo plano durante a intro cinematográfica
   useEffect(() => {
-    if (!portalRevealed) {
-      return;
-    }
-
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
 
@@ -139,11 +137,14 @@ export function ProceduralBlackHole({
 
         const controller = createBlackHoleEngine({
           container: host,
+          frontOverlayContainer: frontContainerRef?.current ?? undefined,
           initialQuality: initialTier,
           isSoftwareGl: probe.isSoftwareGl,
           lightMode: isLightMode,
           onFirstFrame: () => {
-            if (!cancelled) setWebglReady(true);
+            if (!cancelled) {
+              setWebglReady(true);
+            }
           },
           onQualityDowngrade: (tier) => {
             if (!cancelled) setQualityTier(tier);
@@ -185,6 +186,9 @@ export function ProceduralBlackHole({
         });
         controller.setState(initialState);
 
+        // Dispara renderização imediata do primeiro frame para pré-compilar shaders e pipeline na GPU
+        controller.renderSingleFrame();
+
         if (typeof ResizeObserver !== 'undefined') {
           resizeObserver = new ResizeObserver((entries) => {
             const box = entries[0]?.contentRect;
@@ -202,19 +206,16 @@ export function ProceduralBlackHole({
       }
     };
 
-    const raf = window.requestAnimationFrame(() => {
-      void initEngine();
-    });
+    void initEngine();
 
     return () => {
       cancelled = true;
-      window.cancelAnimationFrame(raf);
       resizeObserver?.disconnect();
       engineRef.current?.dispose();
       engineRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portalRevealed]);
+  }, []);
 
   // Escuta progresso de scroll e ponteiro sem re-renderizar o React
   useEffect(() => {
@@ -268,34 +269,26 @@ export function ProceduralBlackHole({
 
   const showLiveWebgl = webglReady && !contextLost;
 
+  // Mantém a visibilidade da camada frontal sincronizada à prontidão WebGL
+  useEffect(() => {
+    const frontHost = frontContainerRef?.current;
+    if (!frontHost) return;
+    frontHost.style.opacity = showLiveWebgl ? '1' : '0';
+  }, [showLiveWebgl, frontContainerRef]);
+
   return (
     <div
       ref={rootRef}
-      data-blackhole-engine={showLiveWebgl ? 'webgl' : 'static'}
+      data-blackhole-engine={showLiveWebgl ? 'webgl' : 'none'}
       data-blackhole-state={opState}
       data-blackhole-quality={qualityTier}
       className={`relative w-full aspect-[1.32/1] flex items-center justify-center ${className}`}
     >
-      {/* Fallback imediato para primeira pintura ou perda de contexto */}
-      <picture
-        className={`w-full h-full flex items-center justify-center transition-opacity duration-700 ease-out ${
-          showLiveWebgl ? 'opacity-0' : 'opacity-100'
-        }`}
-      >
-        <source srcSet="/assets/hero-blackhole.webp" type="image/webp" />
-        <img
-          src="/assets/hero-blackhole.png"
-          alt=""
-          draggable={false}
-          className="w-full h-full block object-contain opacity-[0.86] dark:opacity-[0.96] [mask-image:radial-gradient(ellipse_88%_86%_at_50%_50%,black_52%,transparent_94%)]"
-        />
-      </picture>
-
-      {/* Camada WebGL procedural assíncrona */}
+      {/* Camada WebGL procedural */}
       <div
         ref={canvasHostRef}
         aria-hidden="true"
-        className={`pointer-events-none absolute inset-0 transition-opacity duration-700 ease-out ${
+        className={`pointer-events-none absolute inset-0 ${
           showLiveWebgl ? 'opacity-100' : 'opacity-0'
         }`}
       />

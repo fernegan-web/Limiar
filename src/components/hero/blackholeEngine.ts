@@ -52,6 +52,7 @@ export interface BlackHoleUniformInput {
 
 export interface BlackHoleEngineOptions {
   container: HTMLElement;
+  frontOverlayContainer?: HTMLElement;
   initialQuality: BlackHoleQualityTier;
   isSoftwareGl: boolean;
   lightMode: boolean;
@@ -73,7 +74,7 @@ export interface BlackHoleEngineController {
 export function createBlackHoleEngine(
   options: BlackHoleEngineOptions
 ): BlackHoleEngineController {
-  const { container, isSoftwareGl } = options;
+  const { container, frontOverlayContainer, isSoftwareGl } = options;
   let quality: BlackHoleQualityTier = options.initialQuality;
   let state: BlackHoleOperationalState = 'rest';
   let disposed = false;
@@ -98,6 +99,18 @@ export function createBlackHoleEngine(
   canvas.style.pointerEvents = 'none';
   container.appendChild(canvas);
 
+  let frontCanvas: HTMLCanvasElement | null = null;
+  let frontCtx: CanvasRenderingContext2D | null = null;
+  if (frontOverlayContainer) {
+    frontCanvas = document.createElement('canvas');
+    frontCanvas.style.width = '100%';
+    frontCanvas.style.height = '100%';
+    frontCanvas.style.display = 'block';
+    frontCanvas.style.pointerEvents = 'none';
+    frontOverlayContainer.appendChild(frontCanvas);
+    frontCtx = frontCanvas.getContext('2d', { alpha: true });
+  }
+
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
@@ -108,13 +121,14 @@ export function createBlackHoleEngine(
     uTime: { value: 0 },
     uResolution: { value: resolutionVec },
     uProgress: { value: 0 },
-    uHorizonRadius: { value: 0.24 },
+    uHorizonRadius: { value: 0.48 },
     uWarp: { value: 0.25 },
     uPointer: { value: pointerVec },
     uLightMode: { value: options.lightMode ? 1 : 0 },
     uComplexity: {
       value: quality === 'high' ? 1 : quality === 'medium' ? 0.72 : 0.48,
     },
+    uLayerPass: { value: frontCtx ? 0 : -1 },
   };
 
   const geometry = new THREE.PlaneGeometry(2, 2);
@@ -145,6 +159,10 @@ export function createBlackHoleEngine(
     renderer.setPixelRatio(dpr);
     renderer.setSize(safeW, safeH, false);
     resolutionVec.set(safeW * dpr, safeH * dpr);
+    if (frontCanvas) {
+      frontCanvas.width = canvas.width;
+      frontCanvas.height = canvas.height;
+    }
   };
 
   const rect = container.getBoundingClientRect();
@@ -205,7 +223,20 @@ export function createBlackHoleEngine(
     elapsedSim += dt * speed;
     uniforms.uTime.value = elapsedSim;
 
-    renderer.render(scene, camera);
+    if (frontCanvas && frontCtx) {
+      // Passagem 1: matéria orbital frontal isolada -> transferida ao canvas frontal (z-30)
+      uniforms.uLayerPass.value = 1;
+      renderer.render(scene, camera);
+      frontCtx.clearRect(0, 0, frontCanvas.width, frontCanvas.height);
+      frontCtx.drawImage(canvas, 0, 0);
+
+      // Passagem 2: horizonte de eventos e matéria posterior -> mantida no canvas principal (z-0)
+      uniforms.uLayerPass.value = 0;
+      renderer.render(scene, camera);
+    } else {
+      uniforms.uLayerPass.value = -1;
+      renderer.render(scene, camera);
+    }
 
     if (!firstFrameDone) {
       firstFrameDone = true;
@@ -337,6 +368,9 @@ export function createBlackHoleEngine(
       renderer.dispose();
       if (canvas.parentNode === container) {
         container.removeChild(canvas);
+      }
+      if (frontCanvas && frontOverlayContainer && frontCanvas.parentNode === frontOverlayContainer) {
+        frontOverlayContainer.removeChild(frontCanvas);
       }
     },
   };

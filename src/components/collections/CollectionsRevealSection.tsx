@@ -91,7 +91,7 @@ export function CollectionsRevealSection({
       className={
         staticMode
           ? 'relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16'
-          : 'absolute inset-0 z-30 flex flex-col justify-center overflow-hidden'
+          : 'relative md:absolute md:inset-0 z-30 flex flex-col justify-start md:justify-center w-full min-h-[100dvh] md:min-h-0 overflow-visible md:overflow-hidden'
       }
     >
       {/* Atmosfera contida pós-travessia */}
@@ -111,7 +111,7 @@ export function CollectionsRevealSection({
         className={
           staticMode
             ? 'relative z-10 space-y-6 sm:space-y-8'
-            : 'relative z-10 mx-auto max-w-[1360px] w-full px-4 sm:px-8 pt-[72px] sm:pt-[84px] pb-4 sm:pb-8 flex flex-col justify-center'
+            : 'relative z-10 mx-auto max-w-[1360px] w-full px-4 sm:px-8 pt-20 sm:pt-24 md:pt-[84px] pb-14 sm:pb-16 md:pb-8 flex flex-col justify-start md:justify-center'
         }
       >
         {/* Cabeçalho da Seção de Coleções */}
