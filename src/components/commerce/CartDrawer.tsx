@@ -243,7 +243,7 @@ export function CartDrawer() {
                         onClick={async () => {
                           setCheckingOut(true);
                           setCheckoutError(null);
-                          const res = await proceedToWixCheckout();
+                          const res = await proceedToWixCheckout(items);
                           if (!res.success) {
                             setCheckoutError(res.message || 'Erro ao iniciar checkout.');
                             setCheckingOut(false);
