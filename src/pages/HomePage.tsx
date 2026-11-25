@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, Compass, Infinity as InfinityIcon, Leaf, RefreshCw, ShieldCheck, Truck } from 'lucide-react';
 import { ProductCard } from '../components/commerce/ProductCard';
 import { HeroTraversalStage } from '../components/hero/HeroTraversalStage';
+import { Footer } from '../components/layout/Footer';
 import {
   CybersigilismCorner,
   CybersigilismDivider,
@@ -9,8 +10,8 @@ import {
   EclipseSigil,
   LimiarStar,
 } from '../components/ornaments/CybersigilismOrnaments';
+import { CinematicScrollReveal } from '../components/ui/CinematicScrollReveal';
 import { ResilientImage } from '../components/ui/ResilientImage';
-import { Reveal } from '../components/ui/Reveal';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
 import { useRouter } from '../context/RouterContext';
 import { ThresholdScrollParallax } from '../motion/ThresholdPrimitives';
@@ -109,32 +110,24 @@ export function HomePage() {
     );
   };
 
-  return (
-    <div className="relative overflow-x-clip">
-      {/* ================================================================
-          SEÇÃO 1–3: HERO PROCEDURAL + TRAVESSIA GRAVITACIONAL + COLEÇÕES
-          ================================================================ */}
-      <HeroTraversalStage
-        slide={currentSlide}
-        activeSlideIndex={activeSlideIndex}
-        totalSlides={HERO_SLIDES.length}
-        collections={collections}
-        onViewAllProducts={handleScrollToAllProducts}
-      />
-
-      {/* Divisor Neotribal Sutil entre Travessia e Todos os Produtos */}
-      <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-6">
+  const postCollectionsContent = (
+    <>
+      {/* 1. Divisor Neotribal Sutil entre Coleções e Todos os Produtos */}
+      <CinematicScrollReveal
+        startY={22}
+        startScale={0.97}
+        startBlur={6}
+        className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-6"
+      >
         <CybersigilismDivider className="w-full max-w-2xl mx-auto opacity-75" />
-      </div>
+      </CinematicScrollReveal>
 
-      {/* ================================================================
-          SEÇÃO 4: TODOS OS PRODUTOS (DESTAQUES DO CATÁLOGO)
-          ================================================================ */}
+      {/* 2. TODOS OS PRODUTOS (DESTAQUES DO CATÁLOGO) */}
       <section
         id="todos-os-produtos"
         className="scroll-mt-24 relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16"
       >
-        <Reveal>
+        <CinematicScrollReveal startY={28} startScale={0.97} startBlur={8}>
           <div className="flex items-center justify-between gap-4 mb-8">
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <LimiarStar className="w-4 h-4 text-[var(--accent-uv)] shrink-0 opacity-80" />
@@ -155,22 +148,27 @@ export function HomePage() {
               <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
             </a>
           </div>
-        </Reveal>
+        </CinematicScrollReveal>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
           {featuredProducts.map((product, index) => (
-            <Reveal key={product.id} delayMs={index * 80}>
+            <CinematicScrollReveal
+              key={product.id}
+              staggerIndex={index}
+              staggerStep={0.1}
+              startY={40}
+              startScale={0.93}
+              startBlur={10}
+            >
               <ProductCard product={product} />
-            </Reveal>
+            </CinematicScrollReveal>
           ))}
         </div>
       </section>
 
-      {/* ================================================================
-          SEÇÃO 3: CATEGORIAS (DEMONSTRATIVO)
-          ================================================================ */}
+      {/* 3. NAVEGAÇÃO POR CATEGORIAS */}
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-8">
-        <Reveal>
+        <CinematicScrollReveal startY={34} startScale={0.95} startBlur={8}>
           <div className="glass-surface rounded-[22px] p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-5">
             <div className="flex items-center gap-3">
               <EclipseSigil className="w-5 h-5 text-[var(--text-secondary)] shrink-0" />
@@ -207,14 +205,12 @@ export function HomePage() {
               ))}
             </div>
           </div>
-        </Reveal>
+        </CinematicScrollReveal>
       </section>
 
-      {/* ================================================================
-          SEÇÃO 4: BANNER INSTITUCIONAL
-          ================================================================ */}
+      {/* 4. BANNER INSTITUCIONAL */}
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-10 sm:py-14">
-        <Reveal>
+        <CinematicScrollReveal startY={38} startScale={0.94} startBlur={10}>
           <div className="relative overflow-hidden rounded-[28px] glass-card min-h-[360px] sm:min-h-[400px] flex items-center">
             {/* Imagem atmosférica de fundo com parallax no scroll */}
             <ThresholdScrollParallax offsetY={20} scaleRange={[1.07, 1.01]} className="absolute inset-0">
@@ -253,14 +249,12 @@ export function HomePage() {
               </div>
             </div>
           </div>
-        </Reveal>
+        </CinematicScrollReveal>
       </section>
 
-      {/* ================================================================
-          SEÇÃO 5: PILARES INFORMATIVOS
-          ================================================================ */}
+      {/* 5. BENEFÍCIOS DA LOJA */}
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-8">
-        <Reveal>
+        <CinematicScrollReveal startY={32} startScale={0.96} startBlur={8}>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 py-8 border-y border-[var(--border-hairline)]">
             {[
               { icon: Truck, label: 'Envio para todo o Brasil' },
@@ -286,14 +280,17 @@ export function HomePage() {
               );
             })}
           </div>
-        </Reveal>
+        </CinematicScrollReveal>
       </section>
 
-      {/* ================================================================
-          SEÇÃO 6: NEWSLETTER
-          ================================================================ */}
+      {/* 6. NEWSLETTER */}
       <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-10">
-        <Reveal>
+        <CinematicScrollReveal
+          startY={34}
+          startScale={0.95}
+          startBlur={8}
+          scrollOffset={['start 96%', 'end 90%']}
+        >
           <div className="relative overflow-hidden rounded-[28px] glass-surface-strong p-6 sm:p-10">
             <CybersigilismWeb
               tone="uv"
@@ -357,8 +354,34 @@ export function HomePage() {
               </form>
             </div>
           </div>
-        </Reveal>
+        </CinematicScrollReveal>
       </section>
+
+      {/* 7. FOOTER COMPLETO INTEGRADO À REVELAÇÃO */}
+      <CinematicScrollReveal
+        startY={28}
+        startScale={0.97}
+        startBlur={6}
+        scrollOffset={['start 98%', 'end 99%']}
+      >
+        <Footer embeddedInReveal />
+      </CinematicScrollReveal>
+    </>
+  );
+
+  return (
+    <div className="relative overflow-x-clip">
+      {/* ================================================================
+          SEÇÃO UNIFICADA: HERO PROCEDURAL + TRAVESSIA + COLEÇÕES + CATÁLOGO + FOOTER
+          ================================================================ */}
+      <HeroTraversalStage
+        slide={currentSlide}
+        activeSlideIndex={activeSlideIndex}
+        totalSlides={HERO_SLIDES.length}
+        collections={collections}
+        onViewAllProducts={handleScrollToAllProducts}
+        postCollectionsContent={postCollectionsContent}
+      />
     </div>
   );
 }

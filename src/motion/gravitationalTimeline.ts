@@ -271,7 +271,12 @@ export interface CollectionsRevealState {
   interactive: boolean;
 }
 
-function computeRevealCurve(t: number, startY = 34, startScale = 0.94, startBlur = 10): RevealItemState {
+export function computeRevealCurve(
+  t: number,
+  startY = 34,
+  startScale = 0.94,
+  startBlur = 10
+): RevealItemState {
   const eased = smootherstep(0, 1, t);
   return {
     opacity: Number(eased.toFixed(3)),
@@ -288,23 +293,23 @@ export function computeCollectionsReveal(
 ): CollectionsRevealState {
   const p = clamp(progress, 0, 1);
   const envOpacity = Number(rangeProgress(p, 0.72, 0.83).toFixed(3));
-  const header = computeRevealCurve(rangeProgress(p, 0.77, 0.86), 28, 0.97, 8);
+  const header = computeRevealCurve(rangeProgress(p, 0.75, 0.84), 28, 0.97, 8);
 
   const safeCount = Math.max(0, cardCount);
   const cards: RevealItemState[] = [];
   for (let i = 0; i < safeCount; i++) {
-    const start = Math.min(0.9, 0.81 + i * 0.055);
-    const end = Math.min(0.97, start + 0.085);
+    const start = Math.min(0.86, 0.78 + i * 0.04);
+    const end = Math.min(0.91, start + 0.08);
     cards.push(computeRevealCurve(rangeProgress(p, start, end), 42, 0.93, 12));
   }
 
-  const cta = computeRevealCurve(rangeProgress(p, 0.89, 0.96), 24, 0.96, 6);
+  const cta = computeRevealCurve(rangeProgress(p, 0.845, 0.91), 24, 0.96, 6);
 
   return {
     envOpacity,
     header,
     cards,
     cta,
-    interactive: p >= 0.82,
+    interactive: p >= 0.81,
   };
 }

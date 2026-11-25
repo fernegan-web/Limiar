@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { useMotionValue, useScroll } from 'motion/react';
+import { useMotionValue } from 'motion/react';
 import {
   computeElementCollapse,
   computeSingularityFrame,
@@ -32,6 +32,7 @@ interface HeroTraversalStageProps {
   totalSlides: number;
   collections: Collection[];
   onViewAllProducts: () => void;
+  postCollectionsContent?: React.ReactNode;
 }
 
 interface MeasuredBox {
@@ -89,6 +90,7 @@ export function HeroTraversalStage({
   totalSlides,
   collections,
   onViewAllProducts,
+  postCollectionsContent,
 }: HeroTraversalStageProps) {
   const { portalRevealed } = useThresholdPointer();
   const trackRef = useRef<HTMLElement | null>(null);
@@ -120,18 +122,15 @@ export function HeroTraversalStage({
   const lastScrollYRef = useRef(0);
   const smoothedBoostRef = useRef(0);
   const wasAtRestRef = useRef(false);
+  const wasPastRevealRef = useRef(false);
   const ensureWreathLoopRef = useRef<(() => void) | null>(null);
+  const metricsRef = useRef({ sectionTopDocY: 0, maxReachableScroll: 1 });
 
   const displacementRef = useRef<SVGFEDisplacementMapElement | null>(null);
   const rawId = useId();
   const warpFilterId = `limiar-gravity-warp-${rawId.replace(/:/g, '')}`;
 
   const [qualityTier, setQualityTier] = useState<BlackHoleQualityTier>('high');
-
-  const { scrollYProgress } = useScroll({
-    target: trackRef,
-    offset: ['start start', 'end end'],
-  });
 
   const progressMv = useMotionValue(0);
 
@@ -176,6 +175,7 @@ export function HeroTraversalStage({
 
       // Fast-path em repouso: evita leituras de layout e escritas redundantes no DOM
       if (p <= 0.1) {
+        wasPastRevealRef.current = false;
         if (!wasAtRestRef.current) {
           wasAtRestRef.current = true;
           if (displacementRef.current) {
@@ -217,6 +217,15 @@ export function HeroTraversalStage({
       }
 
       wasAtRestRef.current = false;
+
+      if (p >= 1) {
+        if (wasPastRevealRef.current) {
+          return;
+        }
+        wasPastRevealRef.current = true;
+      } else {
+        wasPastRevealRef.current = false;
+      }
 
       // PASSO 1 (APENAS LEITURAS): lê toda a geometria de layout em lote único antes de qualquer escrita
       const compRect = compositionRef.current?.getBoundingClientRect();
@@ -375,19 +384,61 @@ export function HeroTraversalStage({
       }
     };
 
-    applyFrame(scrollYProgress.get());
-    const unsub = scrollYProgress.on('change', applyFrame);
+    const measureMetrics = () => {
+      if (typeof window === 'undefined' || !trackRef.current) return;
+      const vh = Math.max(window.innerHeight, 320);
+      const rect = trackRef.current.getBoundingClientRect();
+      const sectionTopDocY = rect.top + window.scrollY;
+      const maxReachableScroll = Math.max(
+        1,
+        document.documentElement.scrollHeight - vh - sectionTopDocY
+      );
+      metricsRef.current = { sectionTopDocY, maxReachableScroll };
+    };
+
+    const computeScrollProgress = () => {
+      if (typeof window === 'undefined') return 0;
+      const vh = Math.max(window.innerHeight, 320);
+      const isMob = window.innerWidth < 768;
+      const { sectionTopDocY, maxReachableScroll } = metricsRef.current;
+      const scrolledPastTop = Math.max(0, window.scrollY - sectionTopDocY);
+      const baseSpanPx = vh * (isMob ? 2.12 : 2.4);
+      const effectiveSpanPx = Math.min(baseSpanPx, maxReachableScroll / 0.94);
+      return Math.min(1, Math.max(0, scrolledPastTop / Math.max(1, effectiveSpanPx)));
+    };
+
+    const syncFromScroll = () => {
+      applyFrame(computeScrollProgress());
+    };
+
     const onResize = () => {
       wasAtRestRef.current = false;
-      applyFrame(scrollYProgress.get());
+      wasPastRevealRef.current = false;
+      measureMetrics();
+      syncFromScroll();
     };
+
+    measureMetrics();
+    syncFromScroll();
+
+    window.addEventListener('scroll', syncFromScroll, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
 
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && trackRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        measureMetrics();
+        syncFromScroll();
+      });
+      resizeObserver.observe(trackRef.current);
+    }
+
     return () => {
-      unsub();
+      window.removeEventListener('scroll', syncFromScroll);
       window.removeEventListener('resize', onResize);
+      resizeObserver?.disconnect();
     };
-  }, [scrollYProgress, progressMv, qualityTier, warpFilterId]);
+  }, [progressMv, qualityTier, warpFilterId]);
 
   // Rotação contínua exclusivamente anti-horária (suspende durante intro, aba oculta ou após p >= 0.78)
   useEffect(() => {
@@ -481,7 +532,7 @@ export function HeroTraversalStage({
       data-testid="hero-traversal-track"
       data-traversal-stage="repouso"
       data-traversal-progress="0.000"
-      className="relative h-[320vh] md:h-[410vh]"
+      className="relative"
     >
       {/* Filtro SVG de distorção gravitacional discreta (qualidade alta) */}
       <svg aria-hidden="true" className="absolute w-0 h-0 overflow-hidden pointer-events-none">
@@ -506,12 +557,12 @@ export function HeroTraversalStage({
         </defs>
       </svg>
 
-      {/* Palco Sticky: fixa a experiência durante os 3 estágios sem scroll hijacking */}
-      <div className="sticky top-0 min-h-[100dvh] md:h-[100dvh] w-full overflow-x-clip md:overflow-hidden flex flex-col md:flex-row md:items-center">
+      {/* Palco Sticky: fixa exclusivamente a travessia hero -> singularidade -> véu em 100dvh */}
+      <div className="sticky top-0 z-10 h-[100dvh] w-full overflow-hidden flex flex-col md:flex-row md:items-center pointer-events-none">
         {/* CAMADA DE TRAVESSIA: HERO + SINGULARIDADE PROCEDURAL */}
         <div
           ref={heroOverlayGroupRef}
-          className="absolute inset-x-0 top-0 h-[100dvh] md:relative md:inset-auto md:h-auto z-10 w-full flex items-center"
+          className="relative z-10 w-full h-full md:h-auto flex items-center pointer-events-auto"
         >
           <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-12 sm:pt-14 pb-6 sm:pb-10 w-full">
             <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-4 sm:gap-6">
@@ -650,14 +701,19 @@ export function HeroTraversalStage({
               'radial-gradient(circle at 50% 50%, #030304 0%, #050507 65%, #070709 100%)',
           }}
         />
-
-        {/* REVELAÇÃO SEQUENCIAL DAS COLEÇÕES (78%–100%) */}
-        <CollectionsRevealSection
-          collections={collections}
-          progressMv={progressMv}
-          onViewAllProducts={onViewAllProducts}
-        />
       </div>
+
+      {/* Espaço da travessia gravitacional antes da entrada sequencial das coleções */}
+      <div aria-hidden="true" className="h-[80vh] md:h-[104vh] pointer-events-none" />
+
+      {/* REVELAÇÃO SEQUENCIAL DAS COLEÇÕES + CONTEÚDO UNIFICADO DA HOMEPAGE */}
+      <CollectionsRevealSection
+        collections={collections}
+        progressMv={progressMv}
+        onViewAllProducts={onViewAllProducts}
+      >
+        {postCollectionsContent}
+      </CollectionsRevealSection>
     </section>
   );
 }

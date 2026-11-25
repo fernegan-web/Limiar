@@ -17,6 +17,7 @@ interface CollectionsRevealSectionProps {
   progressMv?: MotionValue<number>;
   staticMode?: boolean;
   onViewAllProducts: () => void;
+  children?: React.ReactNode;
 }
 
 export function CollectionsRevealSection({
@@ -24,6 +25,7 @@ export function CollectionsRevealSection({
   progressMv,
   staticMode = false,
   onViewAllProducts,
+  children,
 }: CollectionsRevealSectionProps) {
   const { navigate } = useRouter();
 
@@ -52,24 +54,39 @@ export function CollectionsRevealSection({
       if (headerRef.current) {
         const h = state.header;
         headerRef.current.style.opacity = String(h.opacity);
-        headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
-        headerRef.current.style.filter = h.blurPx > 0.1 ? `blur(${h.blurPx}px)` : 'none';
+        if (h.opacity >= 0.999) {
+          headerRef.current.style.transform = 'none';
+          headerRef.current.style.filter = 'none';
+        } else {
+          headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
+          headerRef.current.style.filter = h.blurPx > 0.1 ? `blur(${h.blurPx}px)` : 'none';
+        }
       }
 
       state.cards.forEach((c, idx) => {
         const el = cardRefs.current[idx];
         if (!el) return;
         el.style.opacity = String(c.opacity);
-        el.style.transform = `perspective(1100px) translate3d(0, ${c.y}px, 0) scale(${c.scale}) rotateX(${c.rotateXDeg}deg)`;
-        el.style.filter = c.blurPx > 0.1 ? `blur(${c.blurPx}px)` : 'none';
+        if (c.opacity >= 0.999) {
+          el.style.transform = 'none';
+          el.style.filter = 'none';
+        } else {
+          el.style.transform = `perspective(1100px) translate3d(0, ${c.y}px, 0) scale(${c.scale}) rotateX(${c.rotateXDeg}deg)`;
+          el.style.filter = c.blurPx > 0.1 ? `blur(${c.blurPx}px)` : 'none';
+        }
       });
 
       if (ctaRef.current) {
         const cta = state.cta;
         ctaRef.current.style.opacity = String(cta.opacity);
-        ctaRef.current.style.transform = `translate3d(0, ${cta.y}px, 0) scale(${cta.scale})`;
-        ctaRef.current.style.filter =
-          cta.blurPx > 0.1 ? `blur(${cta.blurPx}px)` : 'none';
+        if (cta.opacity >= 0.999) {
+          ctaRef.current.style.transform = 'none';
+          ctaRef.current.style.filter = 'none';
+        } else {
+          ctaRef.current.style.transform = `translate3d(0, ${cta.y}px, 0) scale(${cta.scale})`;
+          ctaRef.current.style.filter =
+            cta.blurPx > 0.1 ? `blur(${cta.blurPx}px)` : 'none';
+        }
       }
     };
 
@@ -87,11 +104,11 @@ export function CollectionsRevealSection({
     <section
       ref={rootRef}
       data-testid="collections-reveal-section"
-      aria-label="Coleções Limiar"
+      aria-label="Coleções Limiar e catálogo"
       className={
         staticMode
           ? 'relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16'
-          : 'relative md:absolute md:inset-0 z-30 flex flex-col justify-start md:justify-center w-full min-h-[100dvh] md:min-h-0 overflow-visible md:overflow-hidden'
+          : 'relative z-30 flex flex-col justify-start w-full overflow-x-clip'
       }
     >
       {/* Atmosfera contida pós-travessia */}
@@ -99,7 +116,7 @@ export function CollectionsRevealSection({
         <div
           ref={envGlowRef}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[100dvh] opacity-0 transition-opacity duration-300"
           style={{
             background:
               'radial-gradient(58% 46% at 50% 42%, var(--atmosphere-radial-1) 0%, transparent 72%)',
@@ -111,7 +128,7 @@ export function CollectionsRevealSection({
         className={
           staticMode
             ? 'relative z-10 space-y-6 sm:space-y-8'
-            : 'relative z-10 mx-auto max-w-[1360px] w-full px-4 sm:px-8 pt-20 sm:pt-24 md:pt-[84px] pb-14 sm:pb-16 md:pb-8 flex flex-col justify-start md:justify-center'
+            : 'relative z-10 mx-auto max-w-[1360px] w-full px-4 sm:px-8 pt-16 sm:pt-20 md:pt-[84px] pb-4 sm:pb-6 flex flex-col justify-start'
         }
       >
         {/* Cabeçalho da Seção de Coleções */}
@@ -242,6 +259,8 @@ export function CollectionsRevealSection({
           </span>
         </div>
       </div>
+
+      {children && <div className="relative z-10 w-full">{children}</div>}
     </section>
   );
 }

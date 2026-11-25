@@ -7,7 +7,11 @@ import {
   MoonPhases,
 } from '../ornaments/CybersigilismOrnaments';
 
-export function Footer() {
+interface FooterProps {
+  embeddedInReveal?: boolean;
+}
+
+export function Footer({ embeddedInReveal = false }: FooterProps) {
   const { navigate } = useRouter();
 
   const handleLink = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -16,7 +20,11 @@ export function Footer() {
   };
 
   return (
-    <footer className="relative z-10 overflow-hidden mt-24 border-t border-[var(--border-hairline)] bg-[var(--bg-elevated)]/45">
+    <footer
+      className={`relative z-10 overflow-hidden ${
+        embeddedInReveal ? 'mt-8 sm:mt-12' : 'mt-24'
+      } border-t border-[var(--border-hairline)] bg-[var(--bg-elevated)]/45`}
+    >
       <div className="relative z-10 mx-auto max-w-[1360px] px-4 sm:px-8 pt-14 pb-10">
         <CybersigilismDivider className="w-full max-w-md mx-auto mb-12 opacity-65" />
 

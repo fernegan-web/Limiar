@@ -639,3 +639,38 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   ZOOM-RESILIENT TRAVERSAL RUNWAY & NATURAL-FLOW COLLECTIONS TRACK
+   ========================================================================== */
+.limiar-traversal-runway {
+  height: calc(100dvh + clamp(420px, 80svh, 660px));
+}
+
+@media (min-width: 768px) {
+  .limiar-traversal-runway {
+    height: calc(100dvh + clamp(460px, 84svh, 760px));
+  }
+}
+
+.limiar-collections-reveal-spacer {
+  height: clamp(260px, 38svh, 360px);
+}
+
+@media (min-width: 768px) {
+  .limiar-collections-reveal-spacer {
+    height: clamp(340px, 50svh, 480px);
+  }
+}
+
+.limiar-collections-sticky {
+  position: sticky;
+  top: 0px;
+}
+
+@media (min-width: 768px) {
+  .limiar-collections-sticky {
+    top: max(0px, calc((100dvh - 658px) * 0.5));
+  }
+}
+

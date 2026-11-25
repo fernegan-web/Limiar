@@ -52,6 +52,15 @@ function AppShell() {
 
   const shouldMountCart = isDrawerOpen || items.length > 0;
 
+  const isHomeRoute =
+    pathname === '/' ||
+    pathname === '' ||
+    (pathname !== '/loja' &&
+      pathname !== '/colecoes' &&
+      pathname !== '/sobre' &&
+      pathname !== '/contato' &&
+      !pathname.startsWith('/produto/'));
+
   const renderPage = () => {
     if (pathname === '/' || pathname === '') {
       return <HomePage />;
@@ -101,7 +110,7 @@ function AppShell() {
         </PortalRouteTransition>
       </main>
 
-      <Footer />
+      {!isHomeRoute && <Footer />}
 
       {shouldMountCart && (
         <Suspense fallback={null}>
