@@ -33,6 +33,8 @@ export interface Product {
   statusTag?: string;
   images: string[];
   variants: ProductVariant[];
+  availableSizes?: string[];
+  availableColors?: string[];
   featured: boolean;
   isDemoData: boolean;
 }

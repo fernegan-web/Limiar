@@ -14,6 +14,7 @@ import {
   useThresholdPointer,
 } from './motion/ThresholdMotionProvider';
 import { HomePage } from './pages/HomePage';
+import { validateAndLogWixCatalogConnection } from './services/wix/wixProductsService';
 
 const CatalogPage = lazy(() =>
   import('./pages/CatalogPage').then((m) => ({ default: m.CatalogPage }))
@@ -60,6 +61,13 @@ function AppShell() {
       document.documentElement.dataset.scrollLocked = 'false';
     };
   }, [searchOpen, accountOpen, isDrawerOpen]);
+
+  // Validação e log da conexão real com o backend Wix Stores (Wix Headless)
+  useEffect(() => {
+    validateAndLogWixCatalogConnection().catch((err) => {
+      console.warn('[Wix Headless] Validação de catálogo:', err);
+    });
+  }, []);
 
   const isHomeRoute =
     pathname === '/' ||

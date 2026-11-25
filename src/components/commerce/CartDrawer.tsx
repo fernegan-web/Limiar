@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { MessageCircle, Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useRouter } from '../../context/RouterContext';
 import { THRESHOLD_DURATIONS, THRESHOLD_EASE, THRESHOLD_SPRING } from '../../motion/thresholdConfig';
 import { getWixIntegrationStatus } from '../../services/wix/wixClient';
+import { proceedToWixCheckout } from '../../services/wix/wixCheckoutService';
 import { formatBRL } from '../../utils/validation';
 import { buildCartWhatsAppUrl } from '../../utils/whatsapp';
 import { ResilientImage } from '../ui/ResilientImage';
@@ -23,6 +24,8 @@ export function CartDrawer() {
   } = useCart();
   const { navigate } = useRouter();
   const wixStatus = getWixIntegrationStatus();
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isDrawerOpen) return;
@@ -231,9 +234,30 @@ export function CartDrawer() {
 
                 <div className="flex items-center gap-3">
                   {wixStatus.checkoutEnabled ? (
-                    <UltravioletButton variant="primary" size="md" className="flex-1">
-                      Finalizar compra
-                    </UltravioletButton>
+                    <div className="flex-1 flex flex-col gap-2">
+                      <UltravioletButton
+                        variant="primary"
+                        size="md"
+                        className="w-full"
+                        disabled={checkingOut}
+                        onClick={async () => {
+                          setCheckingOut(true);
+                          setCheckoutError(null);
+                          const res = await proceedToWixCheckout();
+                          if (!res.success) {
+                            setCheckoutError(res.message || 'Erro ao iniciar checkout.');
+                            setCheckingOut(false);
+                          }
+                        }}
+                      >
+                        {checkingOut ? 'Conectando ao Checkout...' : 'Finalizar compra'}
+                      </UltravioletButton>
+                      {checkoutError && (
+                        <p role="alert" className="text-xs text-[var(--accent-terracotta)] text-center">
+                          {checkoutError}
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <UltravioletButton
                       href={buildCartWhatsAppUrl(items, formatBRL(subtotal))}

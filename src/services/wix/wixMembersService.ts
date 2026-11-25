@@ -1,16 +1,4 @@
-import { getWixIntegrationStatus } from './wixClient';
-
-/**
- * WIX HEADLESS MEMBERS ADAPTER BOUNDARY
- * ---------------------------------------------------------------------------
- * Camada preparada para autenticação real de membros via Wix Headless
- * (@wix/sdk + @wix/members / OAuth Member Authentication).
- *
- * REGRAS DE SEGURANÇA:
- * - Nunca armazene senhas em localStorage/sessionStorage.
- * - Nunca simule sessão autenticada enquanto VITE_WIX_CLIENT_ID e o fluxo OAuth
- *   real da loja não estiverem conectados.
- */
+import { myWixClient, initWixVisitorAuth, saveTokens, getWixIntegrationStatus } from './wixClient';
 
 export type AuthProviderResult =
   | { connected: true; ok: true }
@@ -22,17 +10,37 @@ export function isMemberAuthConnected(): boolean {
   return status.configured && status.visitorAuthReady;
 }
 
-export async function loginWixMember(_params: {
+export async function loginWixMember(params: {
   email: string;
   password: string;
 }): Promise<AuthProviderResult> {
   if (!isMemberAuthConnected()) {
     return { connected: false, ok: false };
   }
-  return { connected: false, ok: false };
+  try {
+    await initWixVisitorAuth();
+    const response: any = await myWixClient.auth.login({
+      email: params.email,
+      password: params.password,
+    });
+    if (response?.tokens || response?.sessionToken || response?.accessToken) {
+      const tokens = response.tokens || response;
+      myWixClient.auth.setTokens(tokens);
+      saveTokens(tokens);
+      return { connected: true, ok: true };
+    }
+    return { connected: true, ok: false, message: 'Credenciais inválidas.' };
+  } catch (error: any) {
+    console.error('[Wix Auth] Erro no login:', error);
+    return {
+      connected: true,
+      ok: false,
+      message: error?.message || 'E-mail ou senha incorretos.',
+    };
+  }
 }
 
-export async function registerWixMember(_params: {
+export async function registerWixMember(params: {
   fullName: string;
   email: string;
   password: string;
@@ -40,12 +48,54 @@ export async function registerWixMember(_params: {
   if (!isMemberAuthConnected()) {
     return { connected: false, ok: false };
   }
-  return { connected: false, ok: false };
+  try {
+    await initWixVisitorAuth();
+    const response: any = await myWixClient.auth.register({
+      email: params.email,
+      password: params.password,
+      profile: { nickname: params.fullName },
+    });
+    if (response?.tokens || response?.sessionToken || response?.accessToken) {
+      const tokens = response.tokens || response;
+      myWixClient.auth.setTokens(tokens);
+      saveTokens(tokens);
+      return { connected: true, ok: true };
+    }
+    return { connected: true, ok: false, message: 'Falha ao registrar membro.' };
+  } catch (error: any) {
+    console.error('[Wix Auth] Erro no registro:', error);
+    return {
+      connected: true,
+      ok: false,
+      message: error?.message || 'Este e-mail já pode estar cadastrado.',
+    };
+  }
 }
 
-export async function requestWixPasswordReset(_email: string): Promise<AuthProviderResult> {
+export async function requestWixPasswordReset(email: string): Promise<AuthProviderResult> {
   if (!isMemberAuthConnected()) {
     return { connected: false, ok: false };
   }
-  return { connected: false, ok: false };
+  try {
+    await initWixVisitorAuth();
+    await (myWixClient.auth as any).sendPasswordResetEmail(email);
+    return { connected: true, ok: true };
+  } catch (error: any) {
+    console.error('[Wix Auth] Erro na recuperação de senha:', error);
+    return {
+      connected: true,
+      ok: false,
+      message: error?.message || 'Erro ao enviar e-mail de recuperação.',
+    };
+  }
+}
+
+export async function logoutWixMember(): Promise<void> {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('limiar_wix_visitor_tokens');
+    }
+  } catch (err) {
+    console.error('[Wix Auth] Erro no logout:', err);
+  }
 }

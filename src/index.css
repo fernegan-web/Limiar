@@ -716,3 +716,44 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   }
 }
 
+/* ==========================================================================
+   WIX STORES HTML DESCRIPTION STYLING
+   ========================================================================== */
+.wix-description h3,
+.wix-description h4,
+.wix-description h5 {
+  font-family: var(--font-display, inherit);
+  font-weight: 600;
+  font-size: 1rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.35rem;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.wix-description p {
+  margin-bottom: 0.65rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.wix-description ul,
+.wix-description ol {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.wix-description li {
+  margin-bottom: 0.2rem;
+}
+
+.wix-description strong,
+.wix-description b,
+.wix-description span[style*="font-weight"] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+

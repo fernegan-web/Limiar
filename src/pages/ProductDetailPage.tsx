@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, Check, ChevronDown, MessageCircle, Minus, Plus } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import {
   CybersigilismCorner,
   LimiarStar,
@@ -11,7 +12,7 @@ import { THRESHOLD_EASE } from '../motion/thresholdConfig';
 import { useCart } from '../context/CartContext';
 import { useRouter } from '../context/RouterContext';
 import { fetchProductBySlug } from '../services/catalogService';
-import type { Product, ProductVariant } from '../types/commerce';
+import type { Product, ProductVariant, ProductSize } from '../types/commerce';
 import { buildProductWhatsAppUrl } from '../utils/whatsapp';
 
 interface ProductDetailPageProps {
@@ -26,6 +27,8 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
   const [loading, setLoading] = useState(true);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+  const [selectedSize, setSelectedSize] = useState<ProductSize | ''>('');
+  const [selectedColor, setSelectedColor] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
   const [addedFeedback, setAddedFeedback] = useState(false);
 
@@ -39,7 +42,11 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
       setProduct(found);
       if (found) {
         const firstInStock = found.variants.find((v) => v.inStock) ?? found.variants[0] ?? null;
-        setSelectedVariant(firstInStock);
+        if (firstInStock) {
+          setSelectedSize(firstInStock.size);
+          setSelectedColor(firstInStock.colorName);
+          setSelectedVariant(firstInStock);
+        }
       }
       setLoading(false);
     });
@@ -47,6 +54,18 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
       active = false;
     };
   }, [slug]);
+
+  useEffect(() => {
+    if (!product) return;
+    const match =
+      product.variants.find((v) => v.size === selectedSize && v.colorName === selectedColor) ||
+      product.variants.find((v) => v.size === selectedSize) ||
+      product.variants[0] ||
+      null;
+    if (match) {
+      setSelectedVariant(match);
+    }
+  }, [selectedSize, selectedColor, product]);
 
   if (loading) {
     return (
@@ -98,6 +117,17 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
     variantLabel: variantSummary,
     productUrl: productPageUrl,
   });
+
+  const availableSizes =
+    product.availableSizes && product.availableSizes.length > 0
+      ? product.availableSizes
+      : Array.from(new Set(product.variants.map((v) => v.size)));
+
+  const availableColorsForSize =
+    product.variants
+      .filter((v) => !selectedSize || v.size === selectedSize)
+      .map((v) => v.colorName);
+  const uniqueColors = Array.from(new Set(availableColorsForSize));
 
   return (
     <div className="relative overflow-hidden">
@@ -185,49 +215,83 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
               </p>
             </div>
 
-            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              {product.description}
-            </p>
+            <div
+              className="wix-description text-sm text-[var(--text-secondary)] leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description || product.shortDescription) }}
+            />
 
             {/* Seleção de Tamanho */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                  Tamanho
-                </span>
-                {selectedVariant && (
-                  <span className="text-[var(--text-secondary)]">
-                    {selectedVariant.colorName} ·{' '}
-                    {selectedVariant.inStock ? 'Disponível' : 'Indisponível'}
+            {availableSizes.length > 0 && availableSizes[0] !== 'Único' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                    Tamanho
                   </span>
-                )}
-              </div>
+                  <span className="text-[var(--text-secondary)]">
+                    {selectedSize}
+                  </span>
+                </div>
 
-              <div className="flex flex-wrap gap-2.5" role="radiogroup" aria-label="Selecionar tamanho">
-                {product.variants.map((variant) => {
-                  const isSelected = selectedVariant?.id === variant.id;
-                  return (
-                    <button
-                      key={variant.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={isSelected}
-                      disabled={!variant.inStock}
-                      onClick={() => setSelectedVariant(variant)}
-                      className={`min-w-[48px] h-11 px-4 rounded-xl text-xs font-medium transition-all ${
-                        !variant.inStock
-                          ? 'border border-[var(--border-hairline)] text-[var(--text-muted)] opacity-45 line-through cursor-not-allowed'
-                          : isSelected
+                <div className="flex flex-wrap gap-2.5" role="radiogroup" aria-label="Selecionar tamanho">
+                  {availableSizes.map((size) => {
+                    const isSelected = selectedSize === size;
+                    const hasStock = product.variants.some((v) => v.size === size && v.inStock);
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => setSelectedSize(size as ProductSize)}
+                        className={`min-w-[48px] h-11 px-4 rounded-xl text-xs font-medium transition-all ${
+                          isSelected
                             ? 'border border-[var(--accent-uv)] bg-[var(--accent-uv-glow)] text-[var(--text-primary)] shadow-[0_0_16px_var(--accent-uv-glow)]'
                             : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
-                      }`}
-                    >
-                      {variant.size}
-                    </button>
-                  );
-                })}
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Seleção de Cor / Acabamento */}
+            {uniqueColors.length > 1 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                    Cor / Acabamento
+                  </span>
+                  <span className="text-[var(--text-secondary)]">
+                    {selectedColor}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5" role="radiogroup" aria-label="Selecionar cor">
+                  {uniqueColors.map((color) => {
+                    const isSelected = selectedColor === color;
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => setSelectedColor(color)}
+                        className={`h-11 px-4 rounded-xl text-xs font-medium transition-all ${
+                          isSelected
+                            ? 'border border-[var(--accent-uv)] bg-[var(--accent-uv-glow)] text-[var(--text-primary)] shadow-[0_0_16px_var(--accent-uv-glow)]'
+                            : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {color}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Quantidade + CTAs */}
             <div className="space-y-3 pt-2">
