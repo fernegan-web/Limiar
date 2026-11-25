@@ -7,6 +7,12 @@ import {
   type BlackHoleQualityTier,
   type CollapseVectorConfig,
 } from '../../motion/gravitationalTimeline';
+import {
+  CinematicProgressDamper,
+  HERO_TRAVERSAL_DAMPER_CONFIG,
+  getEffectiveScrollY,
+  subscribePhysicsScroll,
+} from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { ThresholdMagnetic } from '../../motion/ThresholdPrimitives';
 import type { Collection } from '../../types/commerce';
@@ -384,11 +390,15 @@ export function HeroTraversalStage({
       }
     };
 
+    const damper = new CinematicProgressDamper(HERO_TRAVERSAL_DAMPER_CONFIG);
+    let damperRafId = 0;
+    let lastTickMs = 0;
+
     const measureMetrics = () => {
       if (typeof window === 'undefined' || !trackRef.current) return;
       const vh = Math.max(window.innerHeight, 320);
       const rect = trackRef.current.getBoundingClientRect();
-      const sectionTopDocY = rect.top + window.scrollY;
+      const sectionTopDocY = rect.top + getEffectiveScrollY();
       const maxReachableScroll = Math.max(
         1,
         document.documentElement.scrollHeight - vh - sectionTopDocY
@@ -401,40 +411,68 @@ export function HeroTraversalStage({
       const vh = Math.max(window.innerHeight, 320);
       const isMob = window.innerWidth < 768;
       const { sectionTopDocY, maxReachableScroll } = metricsRef.current;
-      const scrolledPastTop = Math.max(0, window.scrollY - sectionTopDocY);
+      const scrolledPastTop = Math.max(0, getEffectiveScrollY() - sectionTopDocY);
       const baseSpanPx = vh * (isMob ? 2.12 : 2.4);
       const effectiveSpanPx = Math.min(baseSpanPx, maxReachableScroll / 0.94);
       return Math.min(1, Math.max(0, scrolledPastTop / Math.max(1, effectiveSpanPx)));
     };
 
+    const stepDamper = (now: number) => {
+      if (document.visibilityState === 'hidden') {
+        damperRafId = 0;
+        return;
+      }
+      const dtSec = lastTickMs > 0 ? (now - lastTickMs) / 1000 : 1 / 60;
+      lastTickMs = now;
+      const smoothedP = damper.step(dtSec);
+      applyFrame(smoothedP);
+      if (!damper.isSettled()) {
+        damperRafId = window.requestAnimationFrame(stepDamper);
+      } else {
+        damperRafId = 0;
+        lastTickMs = 0;
+      }
+    };
+
     const syncFromScroll = () => {
-      applyFrame(computeScrollProgress());
+      const targetP = computeScrollProgress();
+      damper.setTarget(targetP);
+      if (!damper.isSettled() && !damperRafId && document.visibilityState !== 'hidden') {
+        lastTickMs = performance.now();
+        damperRafId = window.requestAnimationFrame(stepDamper);
+      }
+    };
+
+    const snapFromLayout = () => {
+      const snapped = damper.snap(computeScrollProgress());
+      applyFrame(snapped);
     };
 
     const onResize = () => {
       wasAtRestRef.current = false;
       wasPastRevealRef.current = false;
       measureMetrics();
-      syncFromScroll();
+      snapFromLayout();
     };
 
     measureMetrics();
-    syncFromScroll();
+    snapFromLayout();
 
-    window.addEventListener('scroll', syncFromScroll, { passive: true });
+    const unsubPhysics = subscribePhysicsScroll(syncFromScroll);
     window.addEventListener('resize', onResize, { passive: true });
 
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && trackRef.current) {
       resizeObserver = new ResizeObserver(() => {
         measureMetrics();
-        syncFromScroll();
+        snapFromLayout();
       });
       resizeObserver.observe(trackRef.current);
     }
 
     return () => {
-      window.removeEventListener('scroll', syncFromScroll);
+      if (damperRafId) window.cancelAnimationFrame(damperRafId);
+      unsubPhysics();
       window.removeEventListener('resize', onResize);
       resizeObserver?.disconnect();
     };
@@ -446,7 +484,7 @@ export function HeroTraversalStage({
 
     let rafId = 0;
     let lastTime = performance.now();
-    lastScrollYRef.current = window.scrollY;
+    lastScrollYRef.current = getEffectiveScrollY();
 
     const BASE_DEG_PER_SEC = 3.6;
     const PROGRESS_EXTRA_DEG_PER_SEC = 26.0;
@@ -468,7 +506,7 @@ export function HeroTraversalStage({
       lastTime = now;
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
 
-      const currentScrollY = window.scrollY;
+      const currentScrollY = getEffectiveScrollY();
       const deltaScrollPx = Math.abs(currentScrollY - lastScrollYRef.current);
       lastScrollYRef.current = currentScrollY;
 
@@ -502,7 +540,7 @@ export function HeroTraversalStage({
     const ensureLoop = () => {
       if (!rafId && shouldRun()) {
         lastTime = performance.now();
-        lastScrollYRef.current = window.scrollY;
+        lastScrollYRef.current = getEffectiveScrollY();
         rafId = window.requestAnimationFrame(tick);
       }
     };

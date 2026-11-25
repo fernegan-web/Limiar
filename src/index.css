@@ -99,7 +99,7 @@
 
 @layer base {
   html {
-    scroll-behavior: smooth;
+    scroll-behavior: auto;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: var(--bg-canvas);
     color: var(--text-primary);
@@ -674,3 +674,21 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   }
 }
 
+/* ==========================================================================
+   UNIVERSO LIMIAR — LOCALIZED STICKY RUNWAYS (PACING EXPANDIDO + ZERO RESIDUAL)
+   ========================================================================== */
+.limiar-universo-runway-0 { height: calc(100dvh + clamp(1420px, 210svh, 1920px)); }
+.limiar-universo-runway-1 { height: calc(100dvh + clamp(1920px, 280svh, 2560px)); }
+.limiar-universo-runway-2 { height: calc(100dvh + clamp(1620px, 236svh, 2160px)); }
+.limiar-universo-runway-3 { height: calc(100dvh + clamp(1720px, 250svh, 2300px)); }
+.limiar-universo-runway-4 { height: calc(100dvh + clamp(1820px, 264svh, 2440px)); }
+.limiar-universo-runway-5 { height: calc(100dvh + clamp(1680px, 244svh, 2240px)); }
+
+@media (min-width: 768px) {
+  .limiar-universo-runway-0 { height: calc(100dvh + clamp(1680px, 208svh, 2260px)); }
+  .limiar-universo-runway-1 { height: calc(100dvh + clamp(2220px, 276svh, 2980px)); }
+  .limiar-universo-runway-2 { height: calc(100dvh + clamp(1860px, 232svh, 2520px)); }
+  .limiar-universo-runway-3 { height: calc(100dvh + clamp(1960px, 244svh, 2640px)); }
+  .limiar-universo-runway-4 { height: calc(100dvh + clamp(2080px, 258svh, 2800px)); }
+  .limiar-universo-runway-5 { height: calc(100dvh + clamp(1920px, 240svh, 2580px)); }
+}

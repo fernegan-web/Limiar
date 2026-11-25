@@ -3,6 +3,7 @@ import { ArrowRight, Compass, Infinity as InfinityIcon, Leaf, RefreshCw, ShieldC
 import { ProductCard } from '../components/commerce/ProductCard';
 import { HeroTraversalStage } from '../components/hero/HeroTraversalStage';
 import { Footer } from '../components/layout/Footer';
+import { UniversoLimiarExperience } from '../components/universo/UniversoLimiarExperience';
 import {
   CybersigilismCorner,
   CybersigilismDivider,
@@ -14,6 +15,7 @@ import { CinematicScrollReveal } from '../components/ui/CinematicScrollReveal';
 import { ResilientImage } from '../components/ui/ResilientImage';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
 import { useRouter } from '../context/RouterContext';
+import { scrollToWithPhysics } from '../motion/scrollPhysics';
 import { ThresholdScrollParallax } from '../motion/ThresholdPrimitives';
 import {
   DEMO_CATEGORIES,
@@ -90,10 +92,7 @@ export function HomePage() {
   const handleScrollToAllProducts = useCallback(() => {
     const target = document.getElementById('todos-os-produtos');
     if (!target) return;
-    target.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
+    scrollToWithPhysics(target, { duration: 1.15, offset: -88 });
   }, []);
 
   const handleNewsletterSubmit = (e: React.FormEvent) => {
@@ -356,23 +355,13 @@ export function HomePage() {
           </div>
         </CinematicScrollReveal>
       </section>
-
-      {/* 7. FOOTER COMPLETO INTEGRADO À REVELAÇÃO */}
-      <CinematicScrollReveal
-        startY={28}
-        startScale={0.97}
-        startBlur={6}
-        scrollOffset={['start 98%', 'end 99%']}
-      >
-        <Footer embeddedInReveal />
-      </CinematicScrollReveal>
     </>
   );
 
   return (
     <div className="relative overflow-x-clip">
       {/* ================================================================
-          SEÇÃO UNIFICADA: HERO PROCEDURAL + TRAVESSIA + COLEÇÕES + CATÁLOGO + FOOTER
+          CAPÍTULO 01: HERO PROCEDURAL + TRAVESSIA + COLEÇÕES + CATÁLOGO
           ================================================================ */}
       <HeroTraversalStage
         slide={currentSlide}
@@ -382,6 +371,23 @@ export function HomePage() {
         onViewAllProducts={handleScrollToAllProducts}
         postCollectionsContent={postCollectionsContent}
       />
+
+      {/* ================================================================
+          CAPÍTULO 02: UNIVERSO LIMIAR (EXPERIÊNCIA CINEMATOGRÁFICA INDEPENDENTE)
+          ================================================================ */}
+      <UniversoLimiarExperience />
+
+      {/* ================================================================
+          RODAPÉ OFICIAL
+          ================================================================ */}
+      <CinematicScrollReveal
+        startY={28}
+        startScale={0.97}
+        startBlur={6}
+        scrollOffset={['start 98%', 'end 99%']}
+      >
+        <Footer embeddedInReveal />
+      </CinematicScrollReveal>
     </div>
   );
 }

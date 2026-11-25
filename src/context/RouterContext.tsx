@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { scrollToWithPhysics } from '../motion/scrollPhysics';
 
 interface RouterContextValue {
   pathname: string;
@@ -37,11 +38,11 @@ export function RouterProvider({ children }: { children: React.ReactNode }) {
       window.requestAnimationFrame(() => {
         const el = document.getElementById(hashValue);
         if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          scrollToWithPhysics(el, { duration: 1.05 });
         }
       });
     } else {
-      window.scrollTo({ top: 0, behavior: 'auto' });
+      scrollToWithPhysics(0, { immediate: true });
     }
   }, []);
 

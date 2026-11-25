@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Footer } from './components/layout/Footer';
 import { Navbar } from './components/layout/Navbar';
 import { PortalIntroOverlay } from './components/intro/PortalIntroOverlay';
@@ -51,6 +51,15 @@ function AppShell() {
   const [introActive, setIntroActive] = useState(true);
 
   const shouldMountCart = isDrawerOpen || items.length > 0;
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const isLocked = searchOpen || accountOpen || isDrawerOpen;
+    document.documentElement.dataset.scrollLocked = isLocked ? 'true' : 'false';
+    return () => {
+      document.documentElement.dataset.scrollLocked = 'false';
+    };
+  }, [searchOpen, accountOpen, isDrawerOpen]);
 
   const isHomeRoute =
     pathname === '/' ||
