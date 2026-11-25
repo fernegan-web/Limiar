@@ -83,11 +83,11 @@ export function HeroThresholdComposition({
           style={{ x: bhX, y: bhY }}
           className="relative w-full h-full flex items-center justify-center"
         >
-          {/* CAMADA 02 — BURACO NEGRO PROCEDURAL MONUMENTAL */}
+          {/* CAMADA 03 — BURACO NEGRO PROCEDURAL TRASEIRO (ACIMA DA MOLDURA, ATRÁS DA MODELO) */}
           <div
             ref={collapseRefs?.blackholeOuterRef}
             data-hero-layer="blackhole"
-            className="absolute inset-0 flex items-center justify-center will-change-transform origin-center"
+            className="absolute inset-0 z-10 flex items-center justify-center will-change-transform origin-center"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
@@ -108,11 +108,11 @@ export function HeroThresholdComposition({
             </motion.div>
           </div>
 
-          {/* CAMADA 03 — MOLDURA WREATH CYBERSIGILISM (MESMO MAGNETISMO DO BURACO NEGRO) */}
+          {/* CAMADA 02 — MOLDURA WREATH CYBERSIGILISM (ATRÁS DE TODO O BURACO NEGRO, MESMO MAGNETISMO) */}
           <div
             ref={collapseRefs?.wreathTransformRef}
             data-hero-layer="cybersigilism"
-            className="relative w-[70.27%] sm:w-[70.51%] aspect-square flex items-center justify-center will-change-transform origin-center z-10"
+            className="relative w-[70.27%] sm:w-[70.51%] aspect-square flex items-center justify-center will-change-transform origin-center z-0"
           >
             <div
               ref={collapseRefs?.wreathRotateRef}

@@ -109,12 +109,10 @@ export function ProceduralBlackHole({
     onQualityChange?.(qualityTier);
   }, [qualityTier, onQualityChange]);
 
-  // Inicialização escalonada após o primeiro paint para não bloquear a introdução nem o FCP
+  // Inicialização antecipada em segundo plano durante a intro cinematográfica
   useEffect(() => {
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
-    let startTimer = 0;
-    let idleId = 0;
 
     const initEngine = async () => {
       const host = canvasHostRef.current;
@@ -227,30 +225,10 @@ export function ProceduralBlackHole({
       }
     };
 
-    const scheduleInit = () => {
-      if (cancelled) return;
-      const win = window as Window & {
-        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-        cancelIdleCallback?: (id: number) => void;
-      };
-      if (typeof win.requestIdleCallback === 'function') {
-        idleId = win.requestIdleCallback(() => {
-          void initEngine();
-        }, { timeout: 220 });
-      } else {
-        void initEngine();
-      }
-    };
-
-    startTimer = window.setTimeout(scheduleInit, portalRevealedRef.current ? 0 : 220);
+    void initEngine();
 
     return () => {
       cancelled = true;
-      if (startTimer) window.clearTimeout(startTimer);
-      const win = window as Window & { cancelIdleCallback?: (id: number) => void };
-      if (idleId && typeof win.cancelIdleCallback === 'function') {
-        win.cancelIdleCallback(idleId);
-      }
       resizeObserver?.disconnect();
       engineRef.current?.dispose();
       engineRef.current = null;
