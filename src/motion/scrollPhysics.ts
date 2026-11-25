@@ -9,7 +9,6 @@ import { clamp } from './thresholdConfig';
  * 2. Damper físico para progresso de timeline cinematográfica (aceleração,
  *    desaceleração, resistência a flicks bruscos, limite de velocidade máxima e
  *    convergência limpa sem loops infinitos em repouso).
- * 3. Remapeamento temporal monotônico C1 com platôs de contemplação (~35–45% por cena).
  */
 
 type ScrollListener = () => void;
@@ -113,13 +112,6 @@ export interface ProgressDamperConfig {
   softCatchupThreshold: number;
 }
 
-export const DEFAULT_UNIVERSO_DAMPER_CONFIG: ProgressDamperConfig = {
-  stiffness: 15,
-  damping: 8.1,
-  maxSpeedPerSec: 0.46,
-  softCatchupThreshold: 0.34,
-};
-
 export const HERO_TRAVERSAL_DAMPER_CONFIG: ProgressDamperConfig = {
   stiffness: 24,
   damping: 10.0,
@@ -137,7 +129,7 @@ export class CinematicProgressDamper {
   private settled = true;
   private readonly cfg: ProgressDamperConfig;
 
-  constructor(config: ProgressDamperConfig = DEFAULT_UNIVERSO_DAMPER_CONFIG) {
+  constructor(config: ProgressDamperConfig = HERO_TRAVERSAL_DAMPER_CONFIG) {
     this.cfg = config;
   }
 
@@ -223,92 +215,4 @@ export class CinematicProgressDamper {
 
     return this.visualP;
   }
-}
-
-/* ============================================================================
-   REMAPEAMENTO TEMPORAL MONOTÔNICO C1 COM PLATÔS DE CONTEMPLAÇÃO
-   ============================================================================ */
-export interface PlateauSegment {
-  /** Início no progresso bruto de scroll [0..1] */
-  inStart: number;
-  /** Fim no progresso bruto de scroll [0..1] */
-  inEnd: number;
-  /** Início equivalente no tempo visual da cena [0..1] */
-  outStart: number;
-  /** Fim equivalente no tempo visual da cena [0..1] (outEnd - outStart pequeno = platô de leitura) */
-  outEnd: number;
-}
-
-interface Knot {
-  x: number;
-  y: number;
-  slope: number;
-}
-
-/**
- * Converte o progresso amortecido de scroll em tempo visual da cena com janelas
- * amplas de contemplação/leitura.
- *
- * Propriedades matemáticas garantidas:
- * - Contínuo e derivável (C1) nas transições entre movimento e platô.
- * - Estritamente monotônico crescente (reversível sem saltos ou travamentos).
- * - Preserva exatos 0 -> 0 e 1 -> 1 nas fronteiras de handoff entre cenas.
- */
-export function remapTimelineWithPlateaus(
-  pRaw: number,
-  plateaus: readonly PlateauSegment[]
-): number {
-  const x = clamp(pRaw, 0, 1);
-  if (x <= 0) return 0;
-  if (x >= 1) return 1;
-  if (plateaus.length === 0) return x;
-
-  const knots: Knot[] = [];
-  if (plateaus[0].inStart > 0.0001) {
-    knots.push({ x: 0, y: 0, slope: 1 });
-  }
-
-  for (let i = 0; i < plateaus.length; i++) {
-    const seg = plateaus[i];
-    const dx = Math.max(0.0001, seg.inEnd - seg.inStart);
-    const holdSlope = Math.max(0.02, (seg.outEnd - seg.outStart) / dx);
-    knots.push({ x: seg.inStart, y: seg.outStart, slope: holdSlope });
-    knots.push({ x: seg.inEnd, y: seg.outEnd, slope: holdSlope });
-  }
-
-  const last = plateaus[plateaus.length - 1];
-  if (last.inEnd < 0.9999) {
-    knots.push({ x: 1, y: 1, slope: 1 });
-  }
-
-  // Ajusta tangentes nos extremos 0 e 1 para igualar secante e evitar overshoot cúbico
-  for (let i = 0; i < knots.length - 1; i++) {
-    const k0 = knots[i];
-    const k1 = knots[i + 1];
-    if (x >= k0.x && x <= k1.x) {
-      const dx = k1.x - k0.x;
-      if (dx <= 1e-6) return k1.y;
-      const dy = k1.y - k0.y;
-      const secant = dy / dx;
-      if (secant <= 1e-6) return k0.y;
-
-      // Limita tangentes a <= 2.3 * secante (condição suficiente de monotonicidade cúbica de Hermite)
-      const maxSlope = 2.3 * secant;
-      const m0 = clamp(k0.slope, 0.02 * secant, maxSlope);
-      const m1 = clamp(k1.slope, 0.02 * secant, maxSlope);
-
-      const u = (x - k0.x) / dx;
-      const u2 = u * u;
-      const u3 = u2 * u;
-
-      const h00 = 2 * u3 - 3 * u2 + 1;
-      const h10 = u3 - 2 * u2 + u;
-      const h01 = -2 * u3 + 3 * u2;
-      const h11 = u3 - u2;
-
-      return clamp(h00 * k0.y + h10 * dx * m0 + h01 * k1.y + h11 * dx * m1, 0, 1);
-    }
-  }
-
-  return x;
 }

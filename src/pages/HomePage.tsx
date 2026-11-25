@@ -3,7 +3,7 @@ import { ArrowRight, Compass, Infinity as InfinityIcon, Leaf, RefreshCw, ShieldC
 import { ProductCard } from '../components/commerce/ProductCard';
 import { HeroTraversalStage } from '../components/hero/HeroTraversalStage';
 import { Footer } from '../components/layout/Footer';
-import { UniversoLimiarExperience } from '../components/universo/UniversoLimiarExperience';
+import { SobreLimiarSection } from '../components/sobre/SobreLimiarSection';
 import {
   CybersigilismCorner,
   CybersigilismDivider,
@@ -373,9 +373,9 @@ export function HomePage() {
       />
 
       {/* ================================================================
-          CAPÍTULO 02: UNIVERSO LIMIAR (EXPERIÊNCIA CINEMATOGRÁFICA INDEPENDENTE)
+          CAPÍTULO 02: SEÇÃO INSTITUCIONAL — SOBRE A LIMIAR
           ================================================================ */}
-      <UniversoLimiarExperience />
+      <SobreLimiarSection />
 
       {/* ================================================================
           RODAPÉ OFICIAL
