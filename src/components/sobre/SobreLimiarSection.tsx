@@ -3,6 +3,7 @@ import { GRAFISMOS_ASSETS, preloadSobreBlockAssets } from '../../data/sobreLimia
 import {
   CinematicProgressDamper,
   getEffectiveScrollY,
+  isNativeScrollOnly,
   subscribePhysicsScroll,
   type ProgressDamperConfig,
 } from '../../motion/scrollPhysics';
@@ -134,6 +135,7 @@ export function SobreLimiarSection() {
 
     const stepDesktopDamper = (now: number) => {
       rafId = 0;
+      if (isNativeScrollOnly()) return;
       const dtSec = Math.min((now - lastTime) / 1000, 0.045);
       lastTime = now;
 
@@ -199,7 +201,13 @@ export function SobreLimiarSection() {
       const currentY = getEffectiveScrollY();
       const scrollJump = Math.abs(currentY - lastScrollY);
       lastScrollY = currentY;
-      const shouldSnap = snapImmediate || scrollJump > vh * 1.8;
+      const nativeOnly = isNativeScrollOnly();
+      const shouldSnap = snapImmediate || nativeOnly || scrollJump > vh * 1.8;
+
+      if (nativeOnly && rafId) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
 
       let needsRaf = false;
       for (let i = 0; i < 6; i++) {

@@ -6,6 +6,7 @@ import {
   useSpring,
   useTransform,
 } from 'motion/react';
+import { isNativeScrollOnly } from './scrollPhysics';
 import { useThresholdPointer } from './ThresholdMotionProvider';
 import {
   THRESHOLD_SPRING,
@@ -118,7 +119,14 @@ export function ThresholdMagnetic({
   const y = useSpring(rawY, THRESHOLD_SPRING.magnetic);
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (reducedMotion || e.pointerType === 'touch' || !ref.current) return;
+    if (
+      reducedMotion ||
+      e.pointerType === 'touch' ||
+      isNativeScrollOnly() ||
+      !ref.current
+    ) {
+      return;
+    }
     const { nx, ny } = computeNormalizedPointer(
       e.clientX,
       e.clientY,

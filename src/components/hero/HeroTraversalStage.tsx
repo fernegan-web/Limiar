@@ -11,6 +11,7 @@ import {
   CinematicProgressDamper,
   HERO_TRAVERSAL_DAMPER_CONFIG,
   getEffectiveScrollY,
+  isNativeScrollOnly,
   subscribePhysicsScroll,
 } from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
@@ -390,6 +391,7 @@ export function HeroTraversalStage({
       }
     };
 
+    let nativeMode = isNativeScrollOnly();
     const damper = new CinematicProgressDamper(HERO_TRAVERSAL_DAMPER_CONFIG);
     let damperRafId = 0;
     let lastTickMs = 0;
@@ -418,8 +420,9 @@ export function HeroTraversalStage({
     };
 
     const stepDamper = (now: number) => {
-      if (document.visibilityState === 'hidden') {
+      if (nativeMode || document.visibilityState === 'hidden') {
         damperRafId = 0;
+        lastTickMs = 0;
         return;
       }
       const dtSec = lastTickMs > 0 ? (now - lastTickMs) / 1000 : 1 / 60;
@@ -436,6 +439,18 @@ export function HeroTraversalStage({
 
     const syncFromScroll = () => {
       const targetP = computeScrollProgress();
+      if (nativeMode) {
+        if (damperRafId) {
+          window.cancelAnimationFrame(damperRafId);
+          damperRafId = 0;
+          lastTickMs = 0;
+        }
+        // Mobile/touch: vínculo direto 1:1 com o scrollY real, sem inércia artificial ou atraso
+        const directP = damper.snap(targetP);
+        applyFrame(directP);
+        return;
+      }
+
       damper.setTarget(targetP);
       if (!damper.isSettled() && !damperRafId && document.visibilityState !== 'hidden') {
         lastTickMs = performance.now();
@@ -449,6 +464,12 @@ export function HeroTraversalStage({
     };
 
     const onResize = () => {
+      nativeMode = isNativeScrollOnly();
+      if (nativeMode && damperRafId) {
+        window.cancelAnimationFrame(damperRafId);
+        damperRafId = 0;
+        lastTickMs = 0;
+      }
       wasAtRestRef.current = false;
       wasPastRevealRef.current = false;
       measureMetrics();
@@ -460,6 +481,7 @@ export function HeroTraversalStage({
 
     const unsubPhysics = subscribePhysicsScroll(syncFromScroll);
     window.addEventListener('resize', onResize, { passive: true });
+    window.visualViewport?.addEventListener('resize', onResize, { passive: true });
 
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && trackRef.current) {
@@ -474,6 +496,7 @@ export function HeroTraversalStage({
       if (damperRafId) window.cancelAnimationFrame(damperRafId);
       unsubPhysics();
       window.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('resize', onResize);
       resizeObserver?.disconnect();
     };
   }, [progressMv, qualityTier, warpFilterId]);

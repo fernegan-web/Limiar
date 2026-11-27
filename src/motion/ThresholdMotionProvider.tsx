@@ -8,7 +8,11 @@ import {
   useSpring,
   type MotionValue,
 } from 'motion/react';
-import { notifyPhysicsScroll, setLenisInstance } from './scrollPhysics';
+import {
+  isNativeScrollOnly,
+  notifyPhysicsScroll,
+  setLenisInstance,
+} from './scrollPhysics';
 import { THRESHOLD_SPRING, computeNormalizedPointer } from './thresholdConfig';
 
 interface ThresholdPointerContextValue {
@@ -31,6 +35,9 @@ export function useThresholdPointer(): ThresholdPointerContextValue {
 
 export function ThresholdMotionProvider({ children }: { children: React.ReactNode }) {
   const [portalRevealed, setPortalRevealed] = useState(false);
+  const [nativeScrollOnly, setNativeScrollOnly] = useState<boolean>(() =>
+    isNativeScrollOnly()
+  );
   const lenisRef = useRef<Lenis | null>(null);
 
   const markPortalRevealed = useCallback(() => {
@@ -49,9 +56,55 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
     };
   }, [portalRevealed]);
 
-  // Motor global de inércia para wheel/trackpad (preserva 100% o touch nativo no mobile)
+  // Monitora alterações de viewport/ponteiro (rotação, troca de modo ou emulador)
   useEffect(() => {
     if (typeof window === 'undefined') return;
+
+    const syncEnvironment = () => {
+      const next = isNativeScrollOnly();
+      setNativeScrollOnly((prev) => (prev === next ? prev : next));
+    };
+
+    syncEnvironment();
+    window.addEventListener('resize', syncEnvironment, { passive: true });
+
+    const queries = ['(pointer: fine)', '(pointer: coarse)', '(hover: none)']
+      .map((query) =>
+        typeof window.matchMedia === 'function' ? window.matchMedia(query) : null
+      )
+      .filter((mql): mql is MediaQueryList => mql !== null);
+
+    queries.forEach((mql) => mql.addEventListener('change', syncEnvironment));
+
+    return () => {
+      window.removeEventListener('resize', syncEnvironment);
+      queries.forEach((mql) => mql.removeEventListener('change', syncEnvironment));
+    };
+  }, []);
+
+  // Desktop: motor global Lenis para wheel/trackpad.
+  // Mobile/Touch: exclusivamente scroll nativo do navegador (zero Lenis, zero RAF extra).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (nativeScrollOnly) {
+      setLenisInstance(null);
+      lenisRef.current = null;
+
+      let lastNotifiedY = -1;
+      const handleNativeScroll = () => {
+        const y = window.scrollY;
+        if (Math.abs(y - lastNotifiedY) > 0.01) {
+          lastNotifiedY = y;
+          notifyPhysicsScroll();
+        }
+      };
+
+      window.addEventListener('scroll', handleNativeScroll, { passive: true });
+      return () => {
+        window.removeEventListener('scroll', handleNativeScroll);
+      };
+    }
 
     const lenis = new Lenis({
       smoothWheel: true,
@@ -89,7 +142,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       emitIfChanged(instance.scroll);
     });
 
-    // Fallback para scroll nativo tátil no mobile quando syncTouch está desativado
+    // Fallback para eventos nativos ocasionais enquanto Lenis não está em curso
     const handleNativeScroll = () => {
       if (!lenis.isScrolling) {
         emitIfChanged(window.scrollY);
@@ -121,17 +174,17 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       lenisRef.current = null;
       lenis.destroy();
     };
-  }, []);
+  }, [nativeScrollOnly]);
 
   useEffect(() => {
-    if (!lenisRef.current || typeof document === 'undefined') return;
+    if (nativeScrollOnly || !lenisRef.current || typeof document === 'undefined') return;
     const lockedByOverlay = document.documentElement.dataset.scrollLocked === 'true';
     if (!portalRevealed || lockedByOverlay) {
       lenisRef.current.stop();
     } else {
       lenisRef.current.start();
     }
-  }, [portalRevealed]);
+  }, [portalRevealed, nativeScrollOnly]);
 
   const rawNx = useMotionValue(0);
   const rawNy = useMotionValue(0);
@@ -148,7 +201,14 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
     }
 
     const isFinePointer = window.matchMedia('(pointer: fine)').matches;
-    if (!isFinePointer) return;
+    if (nativeScrollOnly || !isFinePointer) {
+      rawNx.set(0);
+      rawNy.set(0);
+      if (auraRef.current) {
+        auraRef.current.style.opacity = '0';
+      }
+      return;
+    }
 
     let rafId = 0;
     let latestX = window.innerWidth * 0.5;
@@ -202,7 +262,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       window.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('mouseleave', handlePointerLeave);
     };
-  }, [rawNx, rawNy]);
+  }, [rawNx, rawNy, nativeScrollOnly]);
 
   return (
     <MotionConfig reducedMotion="never">
@@ -223,7 +283,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
         />
 
         {/* Barra de travessia de scroll discreta no topo absoluto */}
-        <ThresholdScrollProgress />
+        <ThresholdScrollProgress nativeScrollOnly={nativeScrollOnly} />
 
         {children}
       </ThresholdPointerContext.Provider>
@@ -231,9 +291,9 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
   );
 }
 
-function ThresholdScrollProgress() {
+function ThresholdScrollProgress({ nativeScrollOnly }: { nativeScrollOnly: boolean }) {
   const { scrollYProgress } = useScroll();
-  const scaleX = useSpring(scrollYProgress, {
+  const sprungScaleX = useSpring(scrollYProgress, {
     stiffness: 220,
     damping: 32,
     restDelta: 0.001,
@@ -243,7 +303,7 @@ function ThresholdScrollProgress() {
     <motion.div
       aria-hidden="true"
       className="pointer-events-none fixed top-0 left-0 right-0 h-[1.5px] z-[60] origin-left bg-gradient-to-r from-[var(--accent-uv)] via-[var(--accent-uv-edge)] to-[var(--accent-acid)] opacity-60"
-      style={{ scaleX }}
+      style={{ scaleX: nativeScrollOnly ? scrollYProgress : sprungScaleX }}
     />
   );
 }

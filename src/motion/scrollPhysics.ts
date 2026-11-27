@@ -11,6 +11,56 @@ import { clamp } from './thresholdConfig';
  *    convergência limpa sem loops infinitos em repouso).
  */
 
+export interface ScrollEnvironmentCaps {
+  hasCoarsePointer: boolean;
+  hasNoHover: boolean;
+  hasFinePointer: boolean;
+  maxTouchPoints: number;
+  innerWidth: number;
+}
+
+export function readScrollEnvironmentCaps(): ScrollEnvironmentCaps {
+  if (typeof window === 'undefined') {
+    return {
+      hasCoarsePointer: false,
+      hasNoHover: false,
+      hasFinePointer: true,
+      maxTouchPoints: 0,
+      innerWidth: 1440,
+    };
+  }
+
+  const match = (query: string) =>
+    typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false;
+
+  return {
+    hasCoarsePointer: match('(pointer: coarse)'),
+    hasNoHover: match('(hover: none)'),
+    hasFinePointer: match('(pointer: fine)'),
+    maxTouchPoints: typeof navigator !== 'undefined' ? navigator.maxTouchPoints ?? 0 : 0,
+    innerWidth: window.innerWidth,
+  };
+}
+
+/**
+ * Isolamento estrito Desktop vs. Mobile/Touch:
+ * - Mobile (<768px) e dispositivos prioritariamente touch (sem pointer fine)
+ *   usam exclusivamente rolagem nativa do navegador (zero Lenis, dampers ou magnetismo).
+ * - Desktop com mouse/trackpad (`(pointer: fine)` em largura >= 768px) mantém
+ *   100% da física atual, inclusive em notebooks híbridos com tela touch.
+ */
+export function isNativeScrollOnly(caps?: ScrollEnvironmentCaps): boolean {
+  const resolved = caps ?? readScrollEnvironmentCaps();
+  if (resolved.innerWidth < 768) return true;
+  if ((resolved.hasCoarsePointer || resolved.hasNoHover) && !resolved.hasFinePointer) {
+    return true;
+  }
+  if (resolved.maxTouchPoints > 0 && !resolved.hasFinePointer) {
+    return true;
+  }
+  return false;
+}
+
 type ScrollListener = () => void;
 
 let activeLenis: Lenis | null = null;
@@ -39,10 +89,10 @@ export function notifyPhysicsScroll(): void {
 
 export function getEffectiveScrollY(): number {
   if (typeof window === 'undefined') return 0;
-  if (activeLenis) {
-    return activeLenis.scroll;
+  if (isNativeScrollOnly() || !activeLenis) {
+    return window.scrollY;
   }
-  return window.scrollY;
+  return activeLenis.scroll;
 }
 
 export interface PhysicsScrollToOptions {
@@ -58,7 +108,7 @@ export function scrollToWithPhysics(
   if (typeof window === 'undefined') return;
   const { immediate = false, duration = 1.15, offset = 0 } = options;
 
-  if (activeLenis) {
+  if (activeLenis && !isNativeScrollOnly()) {
     if (immediate) {
       activeLenis.scrollTo(target, { immediate: true, force: true, offset });
       if (typeof target === 'number') {

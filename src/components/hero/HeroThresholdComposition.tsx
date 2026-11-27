@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, useSpring, useTransform, type MotionValue } from 'motion/react';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import type { BlackHoleQualityTier } from '../../motion/gravitationalTimeline';
@@ -12,6 +12,8 @@ export interface HeroCollapseRefs {
   wreathTransformRef?: React.RefObject<HTMLDivElement | null>;
   wreathRotateRef?: React.RefObject<HTMLDivElement | null>;
   wreathBlurRef?: React.RefObject<HTMLDivElement | null>;
+  wreathSharpLayerRef?: React.RefObject<HTMLDivElement | null>;
+  wreathBlurredLayerRef?: React.RefObject<HTMLImageElement | null>;
   modelCollapseRef?: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -40,6 +42,18 @@ export function HeroThresholdComposition({
   const { nx, ny, portalRevealed } = useThresholdPointer();
   const shouldPlayEntrance = portalRevealed;
   const frontBlackholeHostRef = useRef<HTMLDivElement | null>(null);
+  const [isMobileLayout, setIsMobileLayout] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobileLayout(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   // Camada 02 e 03 — Buraco negro e moldura wreath integrados no mesmo centro óptico
   const bhTargetX = useTransform(nx, [-1, 1], [
@@ -80,14 +94,14 @@ export function HeroThresholdComposition({
         className="pointer-events-none absolute top-[41.5%] sm:top-[43.2%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[148%] sm:w-[156%] lg:w-[156%] aspect-[1.32/1] max-w-none z-0 flex items-center justify-center"
       >
         <motion.div
-          style={{ x: bhX, y: bhY }}
+          style={isMobileLayout ? undefined : { x: bhX, y: bhY }}
           className="relative w-full h-full flex items-center justify-center"
         >
           {/* CAMADA 03 — BURACO NEGRO PROCEDURAL TRASEIRO (ACIMA DA MOLDURA, ATRÁS DA MODELO) */}
           <div
             ref={collapseRefs?.blackholeOuterRef}
             data-hero-layer="blackhole"
-            className="absolute inset-0 z-10 flex items-center justify-center will-change-transform origin-center"
+            className="absolute inset-0 z-10 flex items-center justify-center md:will-change-transform origin-center"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
@@ -112,11 +126,11 @@ export function HeroThresholdComposition({
           <div
             ref={collapseRefs?.wreathTransformRef}
             data-hero-layer="cybersigilism"
-            className="relative w-[70.27%] sm:w-[70.51%] aspect-square flex items-center justify-center will-change-transform origin-center z-0"
+            className="relative w-[70.27%] sm:w-[70.51%] aspect-square flex items-center justify-center md:will-change-transform origin-center z-0"
           >
             <div
               ref={collapseRefs?.wreathRotateRef}
-              className="w-full h-full will-change-transform origin-center"
+              className="w-full h-full md:will-change-transform origin-center"
             >
               <motion.div
                 initial={{ opacity: 0, scale: 0.96 }}
@@ -130,25 +144,53 @@ export function HeroThresholdComposition({
               >
                 <div
                   ref={collapseRefs?.wreathBlurRef}
-                  className="w-full h-full will-change-[filter]"
+                  className="w-full h-full md:will-change-[filter]"
                 >
-                  <picture>
-                    <source
-                      srcSet="/assets/hero-wreath-640.webp 640w, /assets/hero-wreath-960.webp 960w"
-                      sizes="(max-width: 640px) 104vw, 680px"
-                      type="image/webp"
-                    />
-                    <img
-                      src="/assets/aistudio/Moldura_Wreath_Cibern_tica_Prateada_78a3f5f9.png"
-                      alt=""
-                      width={1254}
-                      height={1254}
-                      decoding="async"
-                      fetchPriority="high"
-                      draggable={false}
-                      className="w-full h-full block object-contain mix-blend-normal opacity-[0.84] dark:opacity-[0.88] dark:brightness-[1.02] dark:contrast-[1.06] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
-                    />
-                  </picture>
+                  {isMobileLayout ? (
+                    <div className="relative w-full h-full opacity-[0.84] dark:opacity-[0.88] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]">
+                      <div ref={collapseRefs?.wreathSharpLayerRef} className="w-full h-full">
+                        <img
+                          src="/assets/hero-wreath-640.webp"
+                          alt=""
+                          width={640}
+                          height={640}
+                          decoding="async"
+                          fetchPriority="high"
+                          draggable={false}
+                          className="w-full h-full block object-contain mix-blend-normal dark:brightness-[1.02] dark:contrast-[1.06]"
+                        />
+                      </div>
+                      <img
+                        ref={collapseRefs?.wreathBlurredLayerRef}
+                        src="/assets/hero-wreath-640-blur.webp"
+                        alt=""
+                        width={640}
+                        height={640}
+                        decoding="async"
+                        draggable={false}
+                        style={{ opacity: 0 }}
+                        className="pointer-events-none absolute inset-0 w-full h-full block object-contain mix-blend-normal dark:brightness-[1.02] dark:contrast-[1.06]"
+                      />
+                    </div>
+                  ) : (
+                    <picture>
+                      <source
+                        srcSet="/assets/hero-wreath-640.webp 640w, /assets/hero-wreath-960.webp 960w"
+                        sizes="(max-width: 640px) 104vw, 680px"
+                        type="image/webp"
+                      />
+                      <img
+                        src="/assets/aistudio/Moldura_Wreath_Cibern_tica_Prateada_78a3f5f9.png"
+                        alt=""
+                        width={1254}
+                        height={1254}
+                        decoding="async"
+                        fetchPriority="high"
+                        draggable={false}
+                        className="w-full h-full block object-contain mix-blend-normal opacity-[0.84] dark:opacity-[0.88] dark:brightness-[1.02] dark:contrast-[1.06] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                      />
+                    </picture>
+                  )}
                 </div>
               </motion.div>
             </div>
@@ -161,18 +203,24 @@ export function HeroThresholdComposition({
           ============================================================ */}
       <div
         ref={collapseRefs?.modelCollapseRef}
-        className="pointer-events-none absolute inset-x-0 mx-auto bottom-[21%] sm:bottom-[22%] z-20 w-[94%] sm:w-[88%] lg:w-[95%] max-w-[540px] will-change-transform origin-center"
+        className="pointer-events-none absolute inset-x-0 mx-auto bottom-[21%] sm:bottom-[22%] z-20 w-[94%] sm:w-[88%] lg:w-[95%] max-w-[540px] md:will-change-transform origin-center"
       >
         <motion.div
           data-hero-layer="model"
-          style={{ x: modelX, y: modelY }}
+          style={isMobileLayout ? undefined : { x: modelX, y: modelY }}
           className="w-full"
         >
           <motion.div
-            initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
+            initial={
+              isMobileLayout ? { opacity: 0, y: 14 } : { opacity: 0, y: 14, filter: 'blur(4px)' }
+            }
             animate={
               shouldPlayEntrance
-                ? { opacity: 1, y: 0, filter: 'blur(0px)' }
+                ? isMobileLayout
+                  ? { opacity: 1, y: 0 }
+                  : { opacity: 1, y: 0, filter: 'blur(0px)' }
+                : isMobileLayout
+                ? { opacity: 0, y: 14 }
                 : { opacity: 0, y: 14, filter: 'blur(4px)' }
             }
             transition={{ duration: 0.5, delay: 0.09, ease: THRESHOLD_EASE }}
@@ -208,13 +256,13 @@ export function HeroThresholdComposition({
         className="pointer-events-none absolute top-[41.5%] sm:top-[43.2%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[148%] sm:w-[156%] lg:w-[156%] aspect-[1.32/1] max-w-none z-30 flex items-center justify-center"
       >
         <motion.div
-          style={{ x: bhX, y: bhY }}
+          style={isMobileLayout ? undefined : { x: bhX, y: bhY }}
           className="relative w-full h-full flex items-center justify-center"
         >
           <div
             ref={collapseRefs?.blackholeFrontOuterRef}
             data-hero-layer="blackhole-front"
-            className="absolute inset-0 flex items-center justify-center will-change-transform origin-center"
+            className="absolute inset-0 flex items-center justify-center md:will-change-transform origin-center"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
