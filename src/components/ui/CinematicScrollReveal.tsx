@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useScroll } from 'motion/react';
 import { computeRevealCurve } from '../../motion/gravitationalTimeline';
-import { isNativeScrollOnly } from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { clamp } from '../../motion/thresholdConfig';
 
@@ -64,7 +63,7 @@ export function CinematicScrollReveal({
 
     const mq =
       typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)') : null;
-    let isMobile = (mq?.matches ?? false) || isNativeScrollOnly();
+    let isMobile = mq?.matches ?? false;
     let mobileHidden = false;
     let mobileSettled = false;
 
@@ -118,7 +117,7 @@ export function CinematicScrollReveal({
     };
 
     const onBreakpointChange = () => {
-      isMobile = (mq?.matches ?? false) || isNativeScrollOnly();
+      isMobile = mq?.matches ?? false;
       mobileHidden = false;
       mobileSettled = false;
       if (isMobile) {
@@ -133,11 +132,9 @@ export function CinematicScrollReveal({
     apply(scrollYProgress.get());
     const unsub = scrollYProgress.on('change', apply);
     mq?.addEventListener('change', onBreakpointChange);
-    window.addEventListener('resize', onBreakpointChange, { passive: true });
     return () => {
       unsub();
       mq?.removeEventListener('change', onBreakpointChange);
-      window.removeEventListener('resize', onBreakpointChange);
     };
   }, [scrollYProgress, reducedMotion, staggerIndex, staggerStep, startY, startScale, startBlur]);
 

@@ -175,7 +175,7 @@ function mixRgb(c1, c2, t) {
   return [mix(c1[0], c2[0], t), mix(c1[1], c2[1], t), mix(c1[2], c2[2], t)];
 }
 
-function writeWebpFromRgba(buffer, outName, quality = 88, w = WIDTH, h = HEIGHT) {
+function writeWebpFromRgba(buffer, outName, quality = 88) {
   const rawPath = path.join(OUT_DIR, `${outName}.rgba`);
   const webpPath = path.join(OUT_DIR, `${outName}.webp`);
   fs.writeFileSync(rawPath, buffer);
@@ -188,7 +188,7 @@ function writeWebpFromRgba(buffer, outName, quality = 88, w = WIDTH, h = HEIGHT)
       '-pixel_format',
       'rgba',
       '-video_size',
-      `${w}x${h}`,
+      `${WIDTH}x${HEIGHT}`,
       '-i',
       rawPath,
       '-c:v',
@@ -389,74 +389,6 @@ for (let py = 0; py < HEIGHT; py++) {
   }
 }
 
-// 4) CIRCULAR POLAR ORBITAL DISK (512x512) for 60 FPS GPU-composited elliptical rotation on mobile
-const DISK_SIZE = 512;
-const DISK_EXTENT = 1.45;
-const diskBuf = Buffer.alloc(DISK_SIZE * DISK_SIZE * 4);
-
-for (let py = 0; py < DISK_SIZE; py++) {
-  const vUvY = 1 - (py + 0.5) / DISK_SIZE;
-  const ey = (vUvY - 0.5) * 2.0 * DISK_EXTENT;
-
-  for (let px = 0; px < DISK_SIZE; px++) {
-    const vUvX = (px + 0.5) / DISK_SIZE;
-    const ex = (vUvX - 0.5) * 2.0 * DISK_EXTENT;
-
-    const diskR = Math.hypot(ex, ey);
-    const diskNormR = diskR / HORIZON;
-    const outerFade = 1.0 - smoothstep(2.35, 3.0, diskNormR);
-    if (diskNormR <= 0.96 || diskNormR >= 3.0 || outerFade <= 0.0005) continue;
-
-    const diskAngle = Math.atan2(ey, ex);
-    const [filEnergy, chromaMix] = sampleFilaments(
-      diskR,
-      diskAngle,
-      HORIZON,
-      SPIN * 1.15,
-      WARP,
-      4
-    );
-    const brightEnv =
-      smoothstep(0.98, 1.05, diskNormR) *
-      Math.exp(-Math.pow(Math.max(diskNormR - 1.22, 0.0001) / 0.45, 1.75));
-    const stream = filEnergy * brightEnv * 1.32;
-
-    const [pRaw, pChroma] = orbitalMicroParticles(
-      diskNormR,
-      diskAngle,
-      42.0,
-      16.0,
-      SPIN * 1.15,
-      1.6,
-      73.1
-    );
-    const particles = pRaw * brightEnv * 0.95;
-
-    const filHue = mixRgb(COLOR_UV, COLOR_ACID, chromaMix);
-    const partHue = mixRgb(COLOR_ACID, COLOR_UV, pChroma);
-    const wfStream = stream * 1.15;
-    const wfPart = particles * 1.15;
-    const wfSum = wfStream + wfPart;
-
-    const invSum = 1 / Math.max(wfSum, 0.0001);
-    const mixC = [
-      (filHue[0] * wfStream + partHue[0] * wfPart) * invSum,
-      (filHue[1] * wfStream + partHue[1] * wfPart) * invSum,
-      (filHue[2] * wfStream + partHue[2] * wfPart) * invSum,
-    ];
-    const peak = Math.pow(clamp(wfSum * 0.65, 0.0001, 1.0), 2.25);
-    const finalRgb = mixRgb(mixC, CORE_WHITE, peak * 0.78);
-    const alpha = clamp((stream * 0.95 + particles * 0.92) * outerFade, 0, 1);
-
-    const idx = (py * DISK_SIZE + px) * 4;
-    diskBuf[idx] = Math.round(clamp(finalRgb[0], 0, 1) * 255);
-    diskBuf[idx + 1] = Math.round(clamp(finalRgb[1], 0, 1) * 255);
-    diskBuf[idx + 2] = Math.round(clamp(finalRgb[2], 0, 1) * 255);
-    diskBuf[idx + 3] = Math.round(alpha * 255);
-  }
-}
-
 writeWebpFromRgba(rearBuf, 'rear-accretion-768', 88);
 writeWebpFromRgba(frontBuf, 'front-orbit-768', 90);
 writeWebpFromRgba(haloBuf, 'inner-halo-768', 88);
-writeWebpFromRgba(diskBuf, 'orbital-disk-512', 88, DISK_SIZE, DISK_SIZE);
