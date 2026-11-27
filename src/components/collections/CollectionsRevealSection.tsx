@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react';
 import type { MotionValue } from 'motion/react';
 import { useRouter } from '../../context/RouterContext';
 import { computeCollectionsReveal } from '../../motion/gravitationalTimeline';
+import { isNativeScrollOnly } from '../../motion/scrollPhysics';
 import type { Collection } from '../../types/commerce';
 import {
   CybersigilismCorner,
@@ -35,16 +36,22 @@ export function CollectionsRevealSection({
   const cardRefs = useRef<(HTMLElement | null)[]>([]);
   const ctaRef = useRef<HTMLDivElement | null>(null);
   const [isMobile, setIsMobile] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+    typeof window !== 'undefined'
+      ? window.matchMedia('(max-width: 767px)').matches || isNativeScrollOnly()
+      : false
   );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(max-width: 767px)');
-    const update = () => setIsMobile(mq.matches);
+    const update = () => setIsMobile(mq.matches || isNativeScrollOnly());
     update();
     mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
+    window.addEventListener('resize', update, { passive: true });
+    return () => {
+      mq.removeEventListener('change', update);
+      window.removeEventListener('resize', update);
+    };
   }, []);
 
   useEffect(() => {

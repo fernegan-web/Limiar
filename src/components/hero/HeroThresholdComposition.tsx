@@ -3,6 +3,7 @@ import { motion, useSpring, useTransform, type MotionValue } from 'motion/react'
 import { isNativeScrollOnly } from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { HERO_PARALLAX_LAYERS, THRESHOLD_EASE } from '../../motion/thresholdConfig';
+import { HeroThresholdCompositionMobile } from './HeroThresholdCompositionMobile';
 import { ProceduralBlackHole } from './ProceduralBlackHole';
 
 export interface HeroCollapseRefs {
@@ -12,6 +13,7 @@ export interface HeroCollapseRefs {
   wreathTransformRef?: React.RefObject<HTMLDivElement | null>;
   wreathRotateRef?: React.RefObject<HTMLDivElement | null>;
   wreathBlurRef?: React.RefObject<HTMLDivElement | null>;
+  wreathBlurOverlayRef?: React.RefObject<HTMLImageElement | null>;
   modelCollapseRef?: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -22,15 +24,46 @@ interface HeroThresholdCompositionProps {
 }
 
 /**
- * Composição tridimensional oficial do Hero:
+ * Roteador estrito da composição oficial do Hero:
+ * - Mobile/Touch: renderiza exclusivamente HeroThresholdCompositionMobile (sem WebGL / sem springs).
+ * - Desktop: renderiza exclusivamente HeroThresholdCompositionDesktop (pipeline WebGL 2-passagens original).
+ * Nunca monta ou executa ambos simultaneamente.
+ */
+export function HeroThresholdComposition(props: HeroThresholdCompositionProps) {
+  const [nativeScroll, setNativeScroll] = useState<boolean>(() => isNativeScrollOnly());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sync = () => {
+      const next = isNativeScrollOnly();
+      setNativeScroll((prev) => (prev === next ? prev : next));
+    };
+    sync();
+    window.addEventListener('resize', sync, { passive: true });
+    const queries = ['(pointer: fine)', '(pointer: coarse)', '(hover: none)']
+      .map((q) => (typeof window.matchMedia === 'function' ? window.matchMedia(q) : null))
+      .filter((mql): mql is MediaQueryList => mql !== null);
+    queries.forEach((mql) => mql.addEventListener('change', sync));
+    return () => {
+      window.removeEventListener('resize', sync);
+      queries.forEach((mql) => mql.removeEventListener('change', sync));
+    };
+  }, []);
+
+  if (nativeScroll) {
+    return <HeroThresholdCompositionMobile {...props} />;
+  }
+
+  return <HeroThresholdCompositionDesktop {...props} />;
+}
+
+/**
+ * Composição tridimensional oficial Desktop do Hero (rigorosamente intacta):
  * - Camada 02 (fundo): Buraco negro procedural em tempo real centralizado atrás da modelo e alinhado à moldura espiral.
  * - Camada 03 (intermediária): Moldura wreath cybersigilism radial em rotação anti-horária contínua.
  * - Camada 04 (primeiro plano): Modelo oficial Limiar acompanhando o cursor em tempo próximo.
- *
- * Os wrappers de posicionamento estático, expansão, rotação, desfoque, parallax e entrada ficam isolados
- * para evitar qualquer conflito entre transforms e filtros da timeline.
  */
-export function HeroThresholdComposition({
+function HeroThresholdCompositionDesktop({
   modelAlt,
   progressMv,
   collapseRefs,
@@ -38,29 +71,6 @@ export function HeroThresholdComposition({
   const { nx, ny, portalRevealed } = useThresholdPointer();
   const shouldPlayEntrance = portalRevealed;
   const frontBlackholeHostRef = useRef<HTMLDivElement | null>(null);
-  const [isMobileLayout, setIsMobileLayout] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
-  );
-  const [nativeScroll, setNativeScroll] = useState<boolean>(() => isNativeScrollOnly());
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 767px)');
-    const update = () => {
-      setIsMobileLayout(mq.matches);
-      setNativeScroll(isNativeScrollOnly());
-    };
-    update();
-    mq.addEventListener('change', update);
-    window.addEventListener('resize', update, { passive: true });
-    return () => {
-      mq.removeEventListener('change', update);
-      window.removeEventListener('resize', update);
-    };
-  }, []);
-
-  const disablePointerSprings = isMobileLayout || nativeScroll;
-  const restoredPastRest = nativeScroll && (progressMv?.get() ?? 0) > 0.1;
 
   // Camada 02 e 03 — Buraco negro e moldura wreath integrados no mesmo centro óptico
   const bhTargetX = useTransform(nx, [-1, 1], [
@@ -101,7 +111,7 @@ export function HeroThresholdComposition({
         className="pointer-events-none absolute top-[41.5%] sm:top-[43.2%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[148%] sm:w-[156%] lg:w-[156%] aspect-[1.32/1] max-w-none z-0 flex items-center justify-center"
       >
         <motion.div
-          style={disablePointerSprings ? undefined : { x: bhX, y: bhY }}
+          style={{ x: bhX, y: bhY }}
           className="relative w-full h-full flex items-center justify-center"
         >
           {/* CAMADA 03 — BURACO NEGRO PROCEDURAL TRASEIRO (ACIMA DA MOLDURA, ATRÁS DA MODELO) */}
@@ -113,11 +123,7 @@ export function HeroThresholdComposition({
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={shouldPlayEntrance ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.96 }}
-              transition={
-                restoredPastRest
-                  ? { duration: 0 }
-                  : { duration: 0.52, delay: 0, ease: THRESHOLD_EASE }
-              }
+              transition={{ duration: 0.52, delay: 0, ease: THRESHOLD_EASE }}
               className="w-full"
             >
               <div
@@ -149,11 +155,7 @@ export function HeroThresholdComposition({
                     ? { opacity: 1, scale: 1 }
                     : { opacity: 0, scale: 0.96 }
                 }
-                transition={
-                  restoredPastRest
-                    ? { duration: 0 }
-                    : { duration: 0.5, delay: 0.05, ease: THRESHOLD_EASE }
-                }
+                transition={{ duration: 0.5, delay: 0.05, ease: THRESHOLD_EASE }}
                 className="w-full h-full"
               >
                 <div
@@ -193,27 +195,17 @@ export function HeroThresholdComposition({
       >
         <motion.div
           data-hero-layer="model"
-          style={disablePointerSprings ? undefined : { x: modelX, y: modelY }}
+          style={{ x: modelX, y: modelY }}
           className="w-full"
         >
           <motion.div
-            initial={
-              isMobileLayout ? { opacity: 0, y: 14 } : { opacity: 0, y: 14, filter: 'blur(4px)' }
-            }
+            initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
             animate={
               shouldPlayEntrance
-                ? isMobileLayout
-                  ? { opacity: 1, y: 0 }
-                  : { opacity: 1, y: 0, filter: 'blur(0px)' }
-                : isMobileLayout
-                ? { opacity: 0, y: 14 }
+                ? { opacity: 1, y: 0, filter: 'blur(0px)' }
                 : { opacity: 0, y: 14, filter: 'blur(4px)' }
             }
-            transition={
-              restoredPastRest
-                ? { duration: 0 }
-                : { duration: 0.5, delay: 0.09, ease: THRESHOLD_EASE }
-            }
+            transition={{ duration: 0.5, delay: 0.09, ease: THRESHOLD_EASE }}
           >
             <picture>
               <source
@@ -246,7 +238,7 @@ export function HeroThresholdComposition({
         className="pointer-events-none absolute top-[41.5%] sm:top-[43.2%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[148%] sm:w-[156%] lg:w-[156%] aspect-[1.32/1] max-w-none z-30 flex items-center justify-center"
       >
         <motion.div
-          style={disablePointerSprings ? undefined : { x: bhX, y: bhY }}
+          style={{ x: bhX, y: bhY }}
           className="relative w-full h-full flex items-center justify-center"
         >
           <div
@@ -257,11 +249,7 @@ export function HeroThresholdComposition({
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={shouldPlayEntrance ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.96 }}
-              transition={
-                restoredPastRest
-                  ? { duration: 0 }
-                  : { duration: 0.52, delay: 0, ease: THRESHOLD_EASE }
-              }
+              transition={{ duration: 0.52, delay: 0, ease: THRESHOLD_EASE }}
               className="w-full h-full"
             >
               <div

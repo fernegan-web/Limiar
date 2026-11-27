@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { useMotionValue } from 'motion/react';
 import {
   computeElementCollapse,
@@ -73,23 +73,44 @@ function pullFromMeasured(
   };
 }
 
+interface CachedMobileCenters {
+  width: number;
+  height: number;
+  bhCenterX: number;
+  bhCenterY: number;
+  eyebrowCenter: MeasuredBox | null;
+  titleCenter: MeasuredBox | null;
+  descCenter: MeasuredBox | null;
+  ctaCenter: MeasuredBox | null;
+  counterCenter: MeasuredBox | null;
+  railCenter: MeasuredBox | null;
+  modelCenter: MeasuredBox | null;
+}
+
 function applyCollapseStyle(
   node: HTMLElement | null,
   progress: number,
   config: CollapseVectorConfig,
   enableSvgWarpFilter = false,
-  svgFilterUrl?: string
+  svgFilterUrl?: string,
+  isMobilePureTransform = false
 ) {
   if (!node) return;
-  const st = computeElementCollapse(progress, config);
+  const st = computeElementCollapse(progress, config, isMobilePureTransform);
   node.style.opacity = String(st.opacity);
   node.style.transform = `translate3d(${st.x}px, ${st.y}px, 0) scale(${st.scale * st.scaleX}, ${st.scale * st.scaleY}) skewX(${st.skewXDeg}deg) rotate(${st.rotateDeg}deg)`;
-  const blurFilter = st.blurPx > 0.1 ? `blur(${st.blurPx}px)` : '';
-  const warpFilter =
-    enableSvgWarpFilter && svgFilterUrl && progress > 0.24 && progress < 0.7
-      ? ` url(${svgFilterUrl})`
-      : '';
-  node.style.filter = `${blurFilter}${warpFilter}`.trim() || 'none';
+  if (isMobilePureTransform) {
+    if (node.style.filter && node.style.filter !== 'none') {
+      node.style.filter = 'none';
+    }
+  } else {
+    const blurFilter = st.blurPx > 0.1 ? `blur(${st.blurPx}px)` : '';
+    const warpFilter =
+      enableSvgWarpFilter && svgFilterUrl && progress > 0.24 && progress < 0.7
+        ? ` url(${svgFilterUrl})`
+        : '';
+    node.style.filter = `${blurFilter}${warpFilter}`.trim() || 'none';
+  }
   node.style.pointerEvents = st.pointerInteractive ? 'auto' : 'none';
 }
 
@@ -121,6 +142,7 @@ export function HeroTraversalStage({
   const wreathTransformRef = useRef<HTMLDivElement | null>(null);
   const wreathRotateRef = useRef<HTMLDivElement | null>(null);
   const wreathBlurRef = useRef<HTMLDivElement | null>(null);
+  const wreathBlurOverlayRef = useRef<HTMLImageElement | null>(null);
   const modelCollapseRef = useRef<HTMLDivElement | null>(null);
   const stickyStageRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
@@ -136,6 +158,7 @@ export function HeroTraversalStage({
   const wasPastRevealRef = useRef(false);
   const ensureWreathLoopRef = useRef<(() => void) | null>(null);
   const resyncRef = useRef<(() => void) | null>(null);
+  const cachedMobileCentersRef = useRef<CachedMobileCenters | null>(null);
   const metricsRef = useRef({
     sectionTopDocY: 0,
     maxReachableScroll: 1,
@@ -147,6 +170,7 @@ export function HeroTraversalStage({
   const displacementRef = useRef<SVGFEDisplacementMapElement | null>(null);
   const rawId = useId();
   const warpFilterId = `limiar-gravity-warp-${rawId.replace(/:/g, '')}`;
+  const [isMobileRuntime, setIsMobileRuntime] = useState<boolean>(() => isNativeScrollOnly());
 
   const progressMv = useMotionValue(0);
 
@@ -160,16 +184,67 @@ export function HeroTraversalStage({
       resistance: 1,
     };
 
+    let nativeMode = isNativeScrollOnly();
+
+    const measureMobileCenters = (w: number, h: number): CachedMobileCenters => {
+      const stickyRect = stickyStageRef.current?.getBoundingClientRect();
+      const originX = stickyRect ? stickyRect.left : 0;
+      const originY = stickyRect ? stickyRect.top : 0;
+
+      const toRelativeRect = (rect: DOMRect | undefined): DOMRect | undefined => {
+        if (!rect) return undefined;
+        return {
+          left: rect.left - originX,
+          top: rect.top - originY,
+          width: rect.width,
+          height: rect.height,
+          right: rect.right - originX,
+          bottom: rect.bottom - originY,
+          x: rect.x - originX,
+          y: rect.y - originY,
+          toJSON: rect.toJSON,
+        } as DOMRect;
+      };
+
+      const compRect = toRelativeRect(compositionRef.current?.getBoundingClientRect());
+      const leftRect = toRelativeRect(leftColRef.current?.getBoundingClientRect());
+      const rightRect = toRelativeRect(rightColRef.current?.getBoundingClientRect());
+
+      const isDesk = w >= 1024;
+      const isMob = w < 768;
+
+      return {
+        width: w,
+        height: h,
+        bhCenterX: compRect ? compRect.left + compRect.width * 0.5 : w * (isDesk ? 0.72 : 0.5),
+        bhCenterY: compRect ? compRect.top + compRect.height * (isMob ? 0.415 : 0.432) : h * 0.48,
+        eyebrowCenter: measureElementCenter(eyebrowRef.current, leftRect),
+        titleCenter: measureElementCenter(titleRef.current, leftRect),
+        descCenter: measureElementCenter(descRef.current, leftRect),
+        ctaCenter: measureElementCenter(ctaRef.current, leftRect),
+        counterCenter: measureElementCenter(counterRef.current, leftRect),
+        railCenter: measureElementCenter(railRef.current, rightRect),
+        modelCenter: measureElementCenter(modelCollapseRef.current, compRect),
+      };
+    };
+
     const applyFrame = (p: number) => {
       progressMv.set(p);
       progressRef.current = p;
 
-      if (p < 0.78) {
+      if (p < (nativeMode ? 0.72 : 0.78)) {
         ensureWreathLoopRef.current?.();
       }
 
-      const width = typeof window !== 'undefined' ? window.innerWidth : 1440;
-      const height = typeof window !== 'undefined' ? window.innerHeight : 900;
+      let width: number;
+      let height: number;
+      if (nativeMode) {
+        width = cachedMobileCentersRef.current?.width || metricsRef.current.stableWidth || 390;
+        height = cachedMobileCentersRef.current?.height || metricsRef.current.stableHeight || 844;
+      } else {
+        width = typeof window !== 'undefined' ? window.innerWidth : 1440;
+        height = typeof window !== 'undefined' ? window.innerHeight : 900;
+      }
       const isDesktop = width >= 1024;
       const isMobile = width < 768;
 
@@ -193,16 +268,16 @@ export function HeroTraversalStage({
         }
         if (!wasAtRestRef.current) {
           wasAtRestRef.current = true;
-          if (displacementRef.current) {
+          if (!nativeMode && displacementRef.current) {
             displacementRef.current.setAttribute('scale', '0');
           }
-          applyCollapseStyle(eyebrowRef.current, p, restConfig);
-          applyCollapseStyle(titleRef.current, p, restConfig);
-          applyCollapseStyle(descRef.current, p, restConfig);
-          applyCollapseStyle(ctaRef.current, p, restConfig);
-          applyCollapseStyle(counterRef.current, p, restConfig);
-          applyCollapseStyle(railRef.current, p, restConfig);
-          applyCollapseStyle(modelCollapseRef.current, p, restConfig);
+          applyCollapseStyle(eyebrowRef.current, p, restConfig, false, undefined, nativeMode);
+          applyCollapseStyle(titleRef.current, p, restConfig, false, undefined, nativeMode);
+          applyCollapseStyle(descRef.current, p, restConfig, false, undefined, nativeMode);
+          applyCollapseStyle(ctaRef.current, p, restConfig, false, undefined, nativeMode);
+          applyCollapseStyle(counterRef.current, p, restConfig, false, undefined, nativeMode);
+          applyCollapseStyle(railRef.current, p, restConfig, false, undefined, nativeMode);
+          applyCollapseStyle(modelCollapseRef.current, p, restConfig, false, undefined, nativeMode);
 
           if (wreathTransformRef.current) {
             wreathTransformRef.current.style.transform = `translate3d(0px, 0px, 0) scale(${frame.wreathScale})`;
@@ -210,6 +285,9 @@ export function HeroTraversalStage({
           }
           if (wreathBlurRef.current) {
             wreathBlurRef.current.style.filter = 'none';
+          }
+          if (wreathBlurOverlayRef.current) {
+            wreathBlurOverlayRef.current.style.opacity = '0';
           }
           const restTransform = `translate3d(0px, 0px, 0) scale(${frame.scale})`;
           if (blackholeOuterRef.current) {
@@ -248,26 +326,52 @@ export function HeroTraversalStage({
         }
       }
 
-      // PASSO 1 (APENAS LEITURAS): lê toda a geometria de layout em lote único antes de qualquer escrita
-      const compRect = compositionRef.current?.getBoundingClientRect();
-      const leftRect = leftColRef.current?.getBoundingClientRect();
-      const rightRect = rightColRef.current?.getBoundingClientRect();
+      let eyebrowCenter: MeasuredBox | null;
+      let titleCenter: MeasuredBox | null;
+      let descCenter: MeasuredBox | null;
+      let ctaCenter: MeasuredBox | null;
+      let counterCenter: MeasuredBox | null;
+      let railCenter: MeasuredBox | null;
+      let modelCenter: MeasuredBox | null;
+      let bhCenterX: number;
+      let bhCenterY: number;
 
-      const eyebrowCenter = measureElementCenter(eyebrowRef.current, leftRect);
-      const titleCenter = measureElementCenter(titleRef.current, leftRect);
-      const descCenter = measureElementCenter(descRef.current, leftRect);
-      const ctaCenter = measureElementCenter(ctaRef.current, leftRect);
-      const counterCenter = measureElementCenter(counterRef.current, leftRect);
-      const railCenter = measureElementCenter(railRef.current, rightRect);
-      const modelCenter = measureElementCenter(modelCollapseRef.current, compRect);
+      if (nativeMode) {
+        // Mobile: utiliza geometria pré-medida em cache (zero getBoundingClientRect/offset* por frame)
+        if (!cachedMobileCentersRef.current) {
+          cachedMobileCentersRef.current = measureMobileCenters(width, height);
+        }
+        const cached = cachedMobileCentersRef.current;
+        eyebrowCenter = cached.eyebrowCenter;
+        titleCenter = cached.titleCenter;
+        descCenter = cached.descCenter;
+        ctaCenter = cached.ctaCenter;
+        counterCenter = cached.counterCenter;
+        railCenter = cached.railCenter;
+        modelCenter = cached.modelCenter;
+        bhCenterX = cached.bhCenterX;
+        bhCenterY = cached.bhCenterY;
+      } else {
+        // Desktop: lê toda a geometria de layout em lote único antes de qualquer escrita
+        const compRect = compositionRef.current?.getBoundingClientRect();
+        const leftRect = leftColRef.current?.getBoundingClientRect();
+        const rightRect = rightColRef.current?.getBoundingClientRect();
 
-      // PASSO 2 (APENAS CÁLCULOS & ESCRITAS): zero layout thrashing
-      const bhCenterX = compRect
-        ? compRect.left + compRect.width * 0.5
-        : width * (isDesktop ? 0.72 : 0.5);
-      const bhCenterY = compRect
-        ? compRect.top + compRect.height * (isMobile ? 0.415 : 0.432)
-        : height * 0.48;
+        eyebrowCenter = measureElementCenter(eyebrowRef.current, leftRect);
+        titleCenter = measureElementCenter(titleRef.current, leftRect);
+        descCenter = measureElementCenter(descRef.current, leftRect);
+        ctaCenter = measureElementCenter(ctaRef.current, leftRect);
+        counterCenter = measureElementCenter(counterRef.current, leftRect);
+        railCenter = measureElementCenter(railRef.current, rightRect);
+        modelCenter = measureElementCenter(modelCollapseRef.current, compRect);
+
+        bhCenterX = compRect
+          ? compRect.left + compRect.width * 0.5
+          : width * (isDesktop ? 0.72 : 0.5);
+        bhCenterY = compRect
+          ? compRect.top + compRect.height * (isMobile ? 0.415 : 0.432)
+          : height * 0.48;
+      }
 
       const vpCenterX = width * 0.5;
       const vpCenterY = height * 0.5;
@@ -278,14 +382,14 @@ export function HeroTraversalStage({
       const targetSingularityX = bhCenterX + shiftX;
       const targetSingularityY = bhCenterY + shiftY;
 
-      const useSvgWarp = true;
-      if (displacementRef.current) {
+      const useSvgWarp = !nativeMode;
+      if (useSvgWarp && displacementRef.current) {
         const warpAmount =
           p > 0.22 && p < 0.68 ? Number((frame.warpIntensity * 14).toFixed(2)) : 0;
         displacementRef.current.setAttribute('scale', String(warpAmount));
       }
 
-      const filterRef = `#${warpFilterId}`;
+      const filterRef = useSvgWarp ? `#${warpFilterId}` : undefined;
 
       applyCollapseStyle(
         eyebrowRef.current,
@@ -298,7 +402,8 @@ export function HeroTraversalStage({
           resistance: 0.74,
         },
         useSvgWarp,
-        filterRef
+        filterRef,
+        nativeMode
       );
 
       applyCollapseStyle(
@@ -312,7 +417,8 @@ export function HeroTraversalStage({
           resistance: 0.88,
         },
         useSvgWarp,
-        filterRef
+        filterRef,
+        nativeMode
       );
 
       applyCollapseStyle(
@@ -326,32 +432,54 @@ export function HeroTraversalStage({
           resistance: 0.82,
         },
         useSvgWarp,
-        filterRef
+        filterRef,
+        nativeMode
       );
 
-      applyCollapseStyle(ctaRef.current, p, {
-        ...pullFromMeasured(ctaCenter, targetSingularityX, targetSingularityY, 0.5),
-        stretchFactor: isDesktop ? 0.18 : 0.14,
-        skewDeg: isDesktop ? -5 : -2,
-        rotateDeg: isDesktop ? -3 : -2,
-        resistance: 0.94,
-      });
+      applyCollapseStyle(
+        ctaRef.current,
+        p,
+        {
+          ...pullFromMeasured(ctaCenter, targetSingularityX, targetSingularityY, 0.5),
+          stretchFactor: isDesktop ? 0.18 : 0.14,
+          skewDeg: isDesktop ? -5 : -2,
+          rotateDeg: isDesktop ? -3 : -2,
+          resistance: 0.94,
+        },
+        false,
+        undefined,
+        nativeMode
+      );
 
-      applyCollapseStyle(counterRef.current, p, {
-        ...pullFromMeasured(counterCenter, targetSingularityX, targetSingularityY, 0.48),
-        stretchFactor: isDesktop ? 0.16 : 0.12,
-        skewDeg: isDesktop ? -4 : -2,
-        rotateDeg: isDesktop ? -3 : -2,
-        resistance: 0.7,
-      });
+      applyCollapseStyle(
+        counterRef.current,
+        p,
+        {
+          ...pullFromMeasured(counterCenter, targetSingularityX, targetSingularityY, 0.48),
+          stretchFactor: isDesktop ? 0.16 : 0.12,
+          skewDeg: isDesktop ? -4 : -2,
+          rotateDeg: isDesktop ? -3 : -2,
+          resistance: 0.7,
+        },
+        false,
+        undefined,
+        nativeMode
+      );
 
-      applyCollapseStyle(railRef.current, p, {
-        ...pullFromMeasured(railCenter, targetSingularityX, targetSingularityY, 0.62),
-        stretchFactor: 0.14,
-        skewDeg: 4,
-        rotateDeg: -6,
-        resistance: 0.72,
-      });
+      applyCollapseStyle(
+        railRef.current,
+        p,
+        {
+          ...pullFromMeasured(railCenter, targetSingularityX, targetSingularityY, 0.62),
+          stretchFactor: 0.14,
+          skewDeg: 4,
+          rotateDeg: -6,
+          resistance: 0.72,
+        },
+        false,
+        undefined,
+        nativeMode
+      );
 
       applyCollapseStyle(
         modelCollapseRef.current,
@@ -364,7 +492,8 @@ export function HeroTraversalStage({
           resistance: 1.0,
         },
         useSvgWarp,
-        filterRef
+        filterRef,
+        nativeMode
       );
 
       if (wreathTransformRef.current) {
@@ -376,7 +505,10 @@ export function HeroTraversalStage({
 
       if (wreathBlurRef.current) {
         wreathBlurRef.current.style.filter =
-          frame.wreathBlurPx > 0.05 ? `blur(${frame.wreathBlurPx}px)` : 'none';
+          !nativeMode && frame.wreathBlurPx > 0.05 ? `blur(${frame.wreathBlurPx}px)` : 'none';
+      }
+      if (wreathBlurOverlayRef.current) {
+        wreathBlurOverlayRef.current.style.opacity = String(frame.wreathBlurBlend);
       }
 
       const blackholeTransform = `translate3d(${shiftX.toFixed(
@@ -409,7 +541,6 @@ export function HeroTraversalStage({
       }
     };
 
-    let nativeMode = isNativeScrollOnly();
     const damper = new CinematicProgressDamper(HERO_TRAVERSAL_DAMPER_CONFIG);
     let damperRafId = 0;
     let lastTickMs = 0;
@@ -449,6 +580,10 @@ export function HeroTraversalStage({
         stableWidth,
         stableHeight,
       };
+
+      if (nativeMode && (shouldUpdateStableVh || !cachedMobileCentersRef.current)) {
+        cachedMobileCentersRef.current = measureMobileCenters(stableWidth, stableHeight);
+      }
     };
 
     const computeScrollProgress = () => {
@@ -523,11 +658,13 @@ export function HeroTraversalStage({
 
     resyncRef.current = () => {
       nativeMode = isNativeScrollOnly();
+      setIsMobileRuntime((prev) => (prev === nativeMode ? prev : nativeMode));
       if (nativeMode && damperRafId) {
         window.cancelAnimationFrame(damperRafId);
         damperRafId = 0;
         lastTickMs = 0;
       }
+      cachedMobileCentersRef.current = null;
       wasAtRestRef.current = false;
       wasPastRevealRef.current = false;
       measureMetrics();
@@ -537,6 +674,7 @@ export function HeroTraversalStage({
     const onResize = () => {
       const prevNative = nativeMode;
       nativeMode = isNativeScrollOnly();
+      setIsMobileRuntime((prev) => (prev === nativeMode ? prev : nativeMode));
       if (nativeMode && damperRafId) {
         window.cancelAnimationFrame(damperRafId);
         damperRafId = 0;
@@ -554,6 +692,7 @@ export function HeroTraversalStage({
         );
 
       if (significantChange) {
+        cachedMobileCentersRef.current = null;
         wasAtRestRef.current = false;
         wasPastRevealRef.current = false;
       }
@@ -617,7 +756,7 @@ export function HeroTraversalStage({
 
     const shouldRun = () =>
       (typeof document === 'undefined' || document.visibilityState !== 'hidden') &&
-      progressRef.current < 0.78;
+      progressRef.current < (isNativeScrollOnly() ? 0.72 : 0.78);
 
     const tick = (now: number) => {
       if (!shouldRun()) {
@@ -696,28 +835,30 @@ export function HeroTraversalStage({
       data-traversal-progress="0.000"
       className="relative"
     >
-      {/* Filtro SVG de distorção gravitacional discreta (qualidade alta) */}
-      <svg aria-hidden="true" className="absolute w-0 h-0 overflow-hidden pointer-events-none">
-        <defs>
-          <filter id={warpFilterId} x="-15%" y="-15%" width="130%" height="130%">
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.012 0.022"
-              numOctaves="2"
-              seed="7"
-              result="gravNoise"
-            />
-            <feDisplacementMap
-              ref={displacementRef}
-              in="SourceGraphic"
-              in2="gravNoise"
-              scale="0"
-              xChannelSelector="R"
-              yChannelSelector="G"
-            />
-          </filter>
-        </defs>
-      </svg>
+      {/* Filtro SVG de distorção gravitacional discreta (apenas Desktop; omitido no mobile) */}
+      {!isMobileRuntime && (
+        <svg aria-hidden="true" className="absolute w-0 h-0 overflow-hidden pointer-events-none">
+          <defs>
+            <filter id={warpFilterId} x="-15%" y="-15%" width="130%" height="130%">
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.012 0.022"
+                numOctaves="2"
+                seed="7"
+                result="gravNoise"
+              />
+              <feDisplacementMap
+                ref={displacementRef}
+                in="SourceGraphic"
+                in2="gravNoise"
+                scale="0"
+                xChannelSelector="R"
+                yChannelSelector="G"
+              />
+            </filter>
+          </defs>
+        </svg>
+      )}
 
       {/* Palco Sticky: fixa exclusivamente a travessia hero -> singularidade -> véu em 100dvh */}
       <div
@@ -823,6 +964,7 @@ export function HeroTraversalStage({
                     wreathTransformRef,
                     wreathRotateRef,
                     wreathBlurRef,
+                    wreathBlurOverlayRef,
                     modelCollapseRef,
                   }}
                 />
