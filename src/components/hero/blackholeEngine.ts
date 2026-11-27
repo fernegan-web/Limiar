@@ -1,52 +1,189 @@
 import {
+  DataTexture,
+  LinearFilter,
   Mesh,
   OrthographicCamera,
   PlaneGeometry,
+  RGBAFormat,
+  RepeatWrapping,
   Scene,
   ShaderMaterial,
   SRGBColorSpace,
+  UnsignedByteType,
   Vector2,
   WebGLRenderer,
 } from 'three';
-import type {
-  BlackHoleOperationalState,
-  BlackHoleQualityTier,
-} from '../../motion/gravitationalTimeline';
+import type { BlackHoleOperationalState } from '../../motion/gravitationalTimeline';
+import { frameScheduler } from '../../performance/frameScheduler';
+import { computeScaledCanvasDimensions } from '../../performance/performanceGovernor';
 import {
-  BLACKHOLE_FRAGMENT_SHADER,
+  performanceGovernor,
+  registerHardwareCapabilities,
+  reportEngineTelemetry,
+  trackWebglContextChange,
+} from '../../performance/performanceRuntime';
+import type {
+  ActiveRenderMode,
+  EngineQualityLevel,
+} from '../../performance/performanceTypes';
+import {
   BLACKHOLE_VERTEX_SHADER,
+  createBlackHoleFragmentShader,
+  createNoiseLutBuffer,
+  type BlackHoleShaderVariant,
 } from './blackholeShader';
 
 export interface WebglCapabilityProbe {
   supported: boolean;
+  webglVersion: 0 | 1 | 2;
   isSoftwareGl: boolean;
+  glVendor: string | null;
+  glRenderer: string | null;
+  supportsGpuTimer: boolean;
+  supportsBitmapRenderer: boolean;
 }
 
+interface DisjointTimerQueryExt {
+  TIME_ELAPSED_EXT: number;
+  GPU_DISJOINT_EXT: number;
+  QUERY_RESULT_AVAILABLE_EXT?: number;
+  QUERY_RESULT_EXT?: number;
+}
+
+type CanvasWithTransferToBitmap = HTMLCanvasElement & {
+  transferToImageBitmap?: () => ImageBitmap;
+};
+
+let cachedProbe: WebglCapabilityProbe | null = null;
+
 export function probeWebglCapability(): WebglCapabilityProbe {
-  if (typeof document === 'undefined') {
-    return { supported: false, isSoftwareGl: false };
+  if (cachedProbe) return cachedProbe;
+
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return {
+      supported: false,
+      webglVersion: 0,
+      isSoftwareGl: false,
+      glVendor: null,
+      glRenderer: null,
+      supportsGpuTimer: false,
+      supportsBitmapRenderer: false,
+    };
   }
+
   try {
     const probeCanvas = document.createElement('canvas');
+    const gl2 = probeCanvas.getContext('webgl2') as WebGL2RenderingContext | null;
     const gl =
-      (probeCanvas.getContext('webgl2') as WebGL2RenderingContext | null) ||
-      (probeCanvas.getContext('webgl') as WebGLRenderingContext | null);
+      gl2 || (probeCanvas.getContext('webgl') as WebGLRenderingContext | null);
+
     if (!gl) {
-      return { supported: false, isSoftwareGl: false };
+      const noGl: WebglCapabilityProbe = {
+        supported: false,
+        webglVersion: 0,
+        isSoftwareGl: false,
+        glVendor: null,
+        glRenderer: null,
+        supportsGpuTimer: false,
+        supportsBitmapRenderer: false,
+      };
+      cachedProbe = noGl;
+      return noGl;
     }
 
     const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-    const renderer = debugInfo
-      ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) ?? '')
-      : '';
-    const isSoftwareGl = /SwiftShader|llvmpipe|softpipe|Microsoft Basic Render/i.test(
-      renderer
+    const glVendor = debugInfo
+      ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) ?? '') || null
+      : null;
+    const glRenderer = debugInfo
+      ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) ?? '') || null
+      : null;
+    const isSoftwareGl =
+      /SwiftShader|llvmpipe|softpipe|Microsoft Basic Render/i.test(
+        glRenderer ?? ''
+      );
+
+    const supportsGpuTimer = Boolean(
+      gl2
+        ? gl2.getExtension('EXT_disjoint_timer_query_webgl2')
+        : gl.getExtension('EXT_disjoint_timer_query')
     );
 
+    let supportsBitmapRenderer = false;
+    try {
+      const testCanvas = document.createElement('canvas') as CanvasWithTransferToBitmap;
+      supportsBitmapRenderer =
+        typeof testCanvas.transferToImageBitmap === 'function' &&
+        Boolean(document.createElement('canvas').getContext('bitmaprenderer'));
+    } catch {
+      supportsBitmapRenderer = false;
+    }
+
     gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return { supported: true, isSoftwareGl };
+
+    const result: WebglCapabilityProbe = {
+      supported: true,
+      webglVersion: gl2 ? 2 : 1,
+      isSoftwareGl,
+      glVendor,
+      glRenderer,
+      supportsGpuTimer,
+      supportsBitmapRenderer,
+    };
+    cachedProbe = result;
+
+    const nav =
+      typeof navigator !== 'undefined'
+        ? (navigator as Navigator & { deviceMemory?: number })
+        : undefined;
+    const prefersReducedMotion =
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    const isMobile = window.innerWidth < 768;
+
+    registerHardwareCapabilities({
+      webglSupported: true,
+      webglVersion: result.webglVersion,
+      isSoftwareGl: result.isSoftwareGl,
+      glVendor: result.glVendor,
+      glRenderer: result.glRenderer,
+      isMobile,
+      hardwareConcurrency:
+        typeof nav?.hardwareConcurrency === 'number' ? nav.hardwareConcurrency : null,
+      deviceMemoryGb:
+        typeof nav?.deviceMemory === 'number' ? nav.deviceMemory : null,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      dpr: window.devicePixelRatio || 1,
+      prefersReducedMotion,
+      supportsLongTaskObserver:
+        typeof PerformanceObserver !== 'undefined' &&
+        Array.isArray(
+          (PerformanceObserver as typeof PerformanceObserver & {
+            supportedEntryTypes?: string[];
+          }).supportedEntryTypes
+        ) &&
+        (
+          PerformanceObserver as typeof PerformanceObserver & {
+            supportedEntryTypes?: string[];
+          }
+        ).supportedEntryTypes!.includes('longtask'),
+      supportsGpuTimer: result.supportsGpuTimer,
+      supportsBitmapRenderer: result.supportsBitmapRenderer,
+    });
+
+    return result;
   } catch {
-    return { supported: false, isSoftwareGl: false };
+    const failed: WebglCapabilityProbe = {
+      supported: false,
+      webglVersion: 0,
+      isSoftwareGl: false,
+      glVendor: null,
+      glRenderer: null,
+      supportsGpuTimer: false,
+      supportsBitmapRenderer: false,
+    };
+    cachedProbe = failed;
+    return failed;
   }
 }
 
@@ -62,43 +199,56 @@ export interface BlackHoleUniformInput {
 export interface BlackHoleEngineOptions {
   container: HTMLElement;
   frontOverlayContainer?: HTMLElement;
-  initialQuality: BlackHoleQualityTier;
+  initialQuality: EngineQualityLevel;
   isSoftwareGl: boolean;
   lightMode: boolean;
   onFirstFrame?: () => void;
-  onQualityDowngrade?: (tier: BlackHoleQualityTier) => void;
+  onQualityChange?: (level: EngineQualityLevel) => void;
   onContextLoss?: () => void;
   onContextRestored?: () => void;
 }
 
 export interface BlackHoleEngineController {
   setState: (state: BlackHoleOperationalState) => void;
-  setQuality: (tier: BlackHoleQualityTier) => void;
+  setQuality: (level: EngineQualityLevel, dsrScale?: number) => void;
   updateUniforms: (input: BlackHoleUniformInput) => void;
   resize: (width: number, height: number) => void;
   renderSingleFrame: () => void;
   dispose: () => void;
 }
 
+function toShaderVariant(level: EngineQualityLevel): BlackHoleShaderVariant {
+  if (level === 'ultra') return 'ultra';
+  if (level === 'high') return 'high';
+  return 'medium';
+}
+
 export function createBlackHoleEngine(
   options: BlackHoleEngineOptions
 ): BlackHoleEngineController {
   const { container, frontOverlayContainer, isSoftwareGl } = options;
-  let quality: BlackHoleQualityTier = options.initialQuality;
+  let quality: EngineQualityLevel = options.initialQuality;
+  let shaderVariant: BlackHoleShaderVariant = toShaderVariant(quality);
+  let dsrScale = performanceGovernor.getDsrScale();
   let state: BlackHoleOperationalState = 'rest';
   let disposed = false;
   let firstFrameDone = false;
   let rafId = 0;
   let afterDrawTimer = 0;
 
+  let cssWidth = Math.max(2, container.clientWidth || 600);
+  let cssHeight = Math.max(2, container.clientHeight || 454);
+
   const renderer = new WebGLRenderer({
     alpha: true,
-    antialias: !isSoftwareGl && quality === 'high',
+    antialias: false,
     depth: false,
     stencil: false,
     powerPreference: 'high-performance',
     premultipliedAlpha: true,
+    preserveDrawingBuffer: false,
   });
+  trackWebglContextChange(1);
 
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.setClearColor(0x000000, 0);
@@ -111,16 +261,47 @@ export function createBlackHoleEngine(
   container.appendChild(canvas);
 
   let frontCanvas: HTMLCanvasElement | null = null;
-  let frontCtx: CanvasRenderingContext2D | null = null;
-  if (frontOverlayContainer) {
+  let frontBitmapCtx: ImageBitmapRenderingContext | null = null;
+  let frontCtx2d: CanvasRenderingContext2D | null = null;
+
+  const ensureFrontCanvas = (needed: boolean) => {
+    if (!frontOverlayContainer) return;
+    if (!needed) {
+      if (frontCanvas && frontCanvas.parentNode === frontOverlayContainer) {
+        frontOverlayContainer.removeChild(frontCanvas);
+      }
+      frontCanvas = null;
+      frontBitmapCtx = null;
+      frontCtx2d = null;
+      return;
+    }
+    if (frontCanvas) return;
+
     frontCanvas = document.createElement('canvas');
     frontCanvas.style.width = '100%';
     frontCanvas.style.height = '100%';
     frontCanvas.style.display = 'block';
     frontCanvas.style.pointerEvents = 'none';
     frontOverlayContainer.appendChild(frontCanvas);
-    frontCtx = frontCanvas.getContext('2d', { alpha: true });
-  }
+
+    if (typeof (canvas as CanvasWithTransferToBitmap).transferToImageBitmap === 'function') {
+      frontBitmapCtx = frontCanvas.getContext('bitmaprenderer');
+    }
+    if (!frontBitmapCtx) {
+      frontCtx2d = frontCanvas.getContext('2d', { alpha: true });
+    }
+  };
+
+  ensureFrontCanvas(shaderVariant === 'ultra');
+
+  // Pré-computa DataTexture 256x256 tileable uma única vez para substituir fbm() procedural no shader
+  const lutData = createNoiseLutBuffer(256);
+  const noiseLutTexture = new DataTexture(lutData, 256, 256, RGBAFormat, UnsignedByteType);
+  noiseLutTexture.wrapS = RepeatWrapping;
+  noiseLutTexture.wrapT = RepeatWrapping;
+  noiseLutTexture.minFilter = LinearFilter;
+  noiseLutTexture.magFilter = LinearFilter;
+  noiseLutTexture.needsUpdate = true;
 
   const scene = new Scene();
   const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -137,15 +318,16 @@ export function createBlackHoleEngine(
     uPointer: { value: pointerVec },
     uLightMode: { value: options.lightMode ? 1 : 0 },
     uComplexity: {
-      value: quality === 'high' ? 1 : quality === 'medium' ? 0.72 : 0.48,
+      value: quality === 'ultra' ? 1 : quality === 'high' ? 0.85 : 0.52,
     },
-    uLayerPass: { value: frontCtx ? 0 : -1 },
+    uLayerPass: { value: shaderVariant === 'ultra' ? 0 : -1 },
+    uNoiseLut: { value: noiseLutTexture },
   };
 
   const geometry = new PlaneGeometry(2, 2);
   const material = new ShaderMaterial({
     vertexShader: BLACKHOLE_VERTEX_SHADER,
-    fragmentShader: BLACKHOLE_FRAGMENT_SHADER,
+    fragmentShader: createBlackHoleFragmentShader(shaderVariant),
     uniforms,
     transparent: true,
     depthTest: false,
@@ -156,137 +338,189 @@ export function createBlackHoleEngine(
   mesh.frustumCulled = false;
   scene.add(mesh);
 
-  const applySize = (width: number, height: number) => {
-    const safeW = Math.max(2, Math.floor(width));
-    const safeH = Math.max(2, Math.floor(height));
-    const dprCap = isSoftwareGl
-      ? 0.9
-      : quality === 'high'
-        ? 1.75
-        : quality === 'medium'
-          ? 1.35
-          : 1;
-    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
-    renderer.setPixelRatio(dpr);
-    renderer.setSize(safeW, safeH, false);
-    resolutionVec.set(safeW * dpr, safeH * dpr);
-    if (frontCanvas) {
-      frontCanvas.width = canvas.width;
-      frontCanvas.height = canvas.height;
+  const getActiveRenderMode = (): ActiveRenderMode => {
+    if (state === 'inactive') return 'suspended';
+    if (shaderVariant === 'ultra') {
+      return frontBitmapCtx ? 'webgl-2pass-bitmap' : 'webgl-2pass-copy';
     }
+    return 'webgl-1pass-hybrid';
   };
 
-  const rect = container.getBoundingClientRect();
-  applySize(rect.width || 600, rect.height || 600);
+  const applySize = (width: number, height: number) => {
+    cssWidth = Math.max(2, Math.floor(width));
+    cssHeight = Math.max(2, Math.floor(height));
+    const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+    const deviceDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
+    const scaled = computeScaledCanvasDimensions({
+      cssWidth,
+      cssHeight,
+      deviceDpr: isSoftwareGl ? Math.min(deviceDpr, 0.85) : deviceDpr,
+      level: quality,
+      isMobile,
+      dsrScale,
+    });
+
+    if (scaled.width <= 0 || scaled.height <= 0) return;
+
+    renderer.setPixelRatio(1);
+    renderer.setSize(scaled.width, scaled.height, false);
+    resolutionVec.set(scaled.width, scaled.height);
+
+    if (frontCanvas) {
+      frontCanvas.width = scaled.width;
+      frontCanvas.height = scaled.height;
+    }
+
+    reportEngineTelemetry({
+      activeRenderMode: getActiveRenderMode(),
+      canvasWidthPx: scaled.width,
+      canvasHeightPx: scaled.height,
+      canvasPixelCount: scaled.pixelCount,
+    });
+  };
+
+  applySize(cssWidth, cssHeight);
 
   const rawGl = renderer.getContext();
+  const isGl2 =
+    typeof WebGL2RenderingContext !== 'undefined' &&
+    rawGl instanceof WebGL2RenderingContext;
+  const gpuTimerExt = isGl2
+    ? (rawGl.getExtension('EXT_disjoint_timer_query_webgl2') as DisjointTimerQueryExt | null)
+    : null;
+  let pendingGpuQuery: WebGLQuery | null = null;
 
-  const afterDraw = (done: () => void) => {
-    if (disposed) return;
-    if (
-      isSoftwareGl &&
-      typeof WebGL2RenderingContext !== 'undefined' &&
-      rawGl instanceof WebGL2RenderingContext
-    ) {
-      const sync = rawGl.fenceSync(rawGl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-      if (!sync) {
-        afterDrawTimer = window.setTimeout(done, 48);
-        return;
-      }
-      const deadline = performance.now() + 80;
-      const poll = () => {
-        if (disposed) {
-          rawGl.deleteSync(sync);
-          return;
-        }
-        const status = rawGl.clientWaitSync(sync, 0, 0);
-        if (
-          status === rawGl.ALREADY_SIGNALED ||
-          status === rawGl.CONDITION_SATISFIED ||
-          performance.now() >= deadline
-        ) {
-          rawGl.deleteSync(sync);
-          done();
-          return;
-        }
-        afterDrawTimer = window.setTimeout(poll, 16);
-      };
-      afterDrawTimer = window.setTimeout(poll, 16);
-      return;
+  const pollGpuTimer = () => {
+    if (!gpuTimerExt || !isGl2 || !pendingGpuQuery) return;
+    const gl2 = rawGl as WebGL2RenderingContext;
+    const available = gl2.getQueryParameter(pendingGpuQuery, gl2.QUERY_RESULT_AVAILABLE);
+    const disjoint = gl2.getParameter(gpuTimerExt.GPU_DISJOINT_EXT);
+    if (available && !disjoint) {
+      const elapsedNs = Number(gl2.getQueryParameter(pendingGpuQuery, gl2.QUERY_RESULT) || 0);
+      reportEngineTelemetry({ gpuFrameTimeMs: elapsedNs / 1_000_000 });
+      gl2.deleteQuery(pendingGpuQuery);
+      pendingGpuQuery = null;
+    } else if (disjoint) {
+      gl2.deleteQuery(pendingGpuQuery);
+      pendingGpuQuery = null;
     }
-
-    rafId = window.requestAnimationFrame(done);
   };
 
+  const afterSoftwareDraw = (done: () => void) => {
+    if (disposed || !isGl2) return;
+    const gl2 = rawGl as WebGL2RenderingContext;
+    const sync = gl2.fenceSync(gl2.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!sync) {
+      afterDrawTimer = window.setTimeout(done, 48);
+      return;
+    }
+    const deadline = performance.now() + 80;
+    const poll = () => {
+      if (disposed) {
+        gl2.deleteSync(sync);
+        return;
+      }
+      const status = gl2.clientWaitSync(sync, 0, 0);
+      if (
+        status === gl2.ALREADY_SIGNALED ||
+        status === gl2.CONDITION_SATISFIED ||
+        performance.now() >= deadline
+      ) {
+        gl2.deleteSync(sync);
+        done();
+        return;
+      }
+      afterDrawTimer = window.setTimeout(poll, 16);
+    };
+    afterDrawTimer = window.setTimeout(poll, 16);
+  };
+
+  const WEBGL_TASK_ID = 'blackhole-webgl-render';
   let lastTimestamp = performance.now();
-  let slowFrameAccumulator = 0;
-  let slowFrameCount = 0;
   let elapsedSim = 0;
 
   const renderFrame = (now: number) => {
     if (disposed) return;
 
-    const dt = Math.min(0.1, Math.max(0.001, (now - lastTimestamp) / 1000));
+    const rawDtMs = Math.max(0.5, now - lastTimestamp);
     lastTimestamp = now;
+    const dtSec = Math.min(0.1, rawDtMs / 1000);
 
-    // Velocidade adaptativa conforme estado operacional (repouso vs travessia)
     const speed = state === 'traversal' ? 1.55 : 0.65;
-    elapsedSim += dt * speed;
+    elapsedSim += dtSec * speed;
     uniforms.uTime.value = elapsedSim;
 
-    if (frontCanvas && frontCtx) {
-      // Passagem 1: matéria orbital frontal isolada -> transferida ao canvas frontal (z-30)
+    pollGpuTimer();
+    let startedQueryThisFrame = false;
+    if (gpuTimerExt && isGl2 && !pendingGpuQuery) {
+      const gl2 = rawGl as WebGL2RenderingContext;
+      const q = gl2.createQuery();
+      if (q) {
+        gl2.beginQuery(gpuTimerExt.TIME_ELAPSED_EXT, q);
+        pendingGpuQuery = q;
+        startedQueryThisFrame = true;
+      }
+    }
+
+    if (shaderVariant === 'ultra' && frontCanvas) {
       uniforms.uLayerPass.value = 1;
       renderer.render(scene, camera);
-      frontCtx.clearRect(0, 0, frontCanvas.width, frontCanvas.height);
-      frontCtx.drawImage(canvas, 0, 0);
 
-      // Passagem 2: horizonte de eventos e matéria posterior -> mantida no canvas principal (z-0)
+      const canvasWithBitmap = canvas as CanvasWithTransferToBitmap;
+      if (frontBitmapCtx && typeof canvasWithBitmap.transferToImageBitmap === 'function') {
+        const bitmap = canvasWithBitmap.transferToImageBitmap();
+        frontBitmapCtx.transferFromImageBitmap(bitmap);
+      } else if (frontCtx2d) {
+        frontCtx2d.clearRect(0, 0, frontCanvas.width, frontCanvas.height);
+        frontCtx2d.drawImage(canvas, 0, 0);
+      }
+
       uniforms.uLayerPass.value = 0;
       renderer.render(scene, camera);
     } else {
-      uniforms.uLayerPass.value = -1;
+      // Passagem única no GPU: horizonte + disco traseiro (camada frontal vem do layer híbrido sem drawImage)
+      uniforms.uLayerPass.value = 0;
       renderer.render(scene, camera);
+    }
+
+    if (startedQueryThisFrame && gpuTimerExt && isGl2) {
+      (rawGl as WebGL2RenderingContext).endQuery(gpuTimerExt.TIME_ELAPSED_EXT);
     }
 
     if (!firstFrameDone) {
       firstFrameDone = true;
       options.onFirstFrame?.();
     }
-
-    // Monitoramento adaptativo gradual de FPS (high -> medium -> low), ignorando picos isolados de hidratação
-    if (!isSoftwareGl && quality !== 'low' && state !== 'inactive') {
-      const targetDt = quality === 'high' ? 1 / 28 : 1 / 20;
-      if (dt > targetDt && dt < 0.095) {
-        slowFrameCount += 1;
-        slowFrameAccumulator += dt;
-        if (slowFrameCount >= 28 && slowFrameAccumulator / slowFrameCount > targetDt) {
-          const nextTier: BlackHoleQualityTier = quality === 'high' ? 'medium' : 'low';
-          quality = nextTier;
-          uniforms.uComplexity.value = nextTier === 'medium' ? 0.72 : 0.48;
-          const r = container.getBoundingClientRect();
-          applySize(r.width || 600, r.height || 600);
-          slowFrameCount = 0;
-          slowFrameAccumulator = 0;
-          options.onQualityDowngrade?.(nextTier);
-        }
-      } else if (dt <= targetDt) {
-        slowFrameCount = Math.max(0, slowFrameCount - 1);
-        slowFrameAccumulator = 0;
-      }
-    }
   };
 
   const scheduleNext = () => {
     if (disposed || state === 'inactive') return;
-    afterDraw(() => {
-      if (disposed || state === 'inactive') return;
-      renderFrame(performance.now());
-      scheduleNext();
+    if (isSoftwareGl) {
+      afterSoftwareDraw(() => {
+        if (disposed || state === 'inactive') return;
+        const now = performance.now();
+        const dt = Math.max(0.5, now - lastTimestamp);
+        renderFrame(now);
+        performanceGovernor.recordFrame(
+          dt,
+          now,
+          typeof document === 'undefined' ? true : document.visibilityState !== 'hidden'
+        );
+        scheduleNext();
+      });
+      return;
+    }
+
+    frameScheduler.scheduleTask(WEBGL_TASK_ID, (nowMs) => {
+      if (disposed || state === 'inactive') return false;
+      renderFrame(nowMs);
+      return true;
     });
   };
 
   const stopLoop = () => {
+    frameScheduler.stopTask(WEBGL_TASK_ID);
     if (rafId) {
       window.cancelAnimationFrame(rafId);
       rafId = 0;
@@ -300,10 +534,13 @@ export function createBlackHoleEngine(
   const handleContextLost = (event: Event) => {
     event.preventDefault();
     stopLoop();
+    trackWebglContextChange(-1);
+    reportEngineTelemetry({ activeRenderMode: 'suspended' });
     options.onContextLoss?.();
   };
 
   const handleContextRestored = () => {
+    trackWebglContextChange(1);
     options.onContextRestored?.();
     lastTimestamp = performance.now();
     renderFrame(lastTimestamp);
@@ -320,6 +557,8 @@ export function createBlackHoleEngine(
       if (disposed || nextState === state) return;
       const wasInactive = state === 'inactive';
       state = nextState;
+      reportEngineTelemetry({ activeRenderMode: getActiveRenderMode() });
+
       if (nextState === 'inactive') {
         stopLoop();
         return;
@@ -330,13 +569,33 @@ export function createBlackHoleEngine(
         scheduleNext();
       }
     },
-    setQuality(nextTier) {
-      if (disposed || nextTier === quality) return;
-      quality = nextTier;
+    setQuality(nextLevel, nextDsr) {
+      if (disposed) return;
+      const resolvedDsr = typeof nextDsr === 'number' ? nextDsr : performanceGovernor.getDsrScale();
+      const qualityChanged = nextLevel !== quality;
+      const dsrChanged = Math.abs(resolvedDsr - dsrScale) > 0.01;
+      if (!qualityChanged && !dsrChanged) return;
+
+      quality = nextLevel;
+      dsrScale = resolvedDsr;
+
+      if (quality === 'low' || quality === 'emergency') {
+        stopLoop();
+        return;
+      }
+
+      const nextVariant = toShaderVariant(quality);
+      if (nextVariant !== shaderVariant) {
+        shaderVariant = nextVariant;
+        ensureFrontCanvas(shaderVariant === 'ultra');
+        material.fragmentShader = createBlackHoleFragmentShader(shaderVariant);
+        material.needsUpdate = true;
+      }
+
       uniforms.uComplexity.value =
-        quality === 'high' ? 1 : quality === 'medium' ? 0.72 : 0.48;
-      const r = container.getBoundingClientRect();
-      applySize(r.width || 600, r.height || 600);
+        quality === 'ultra' ? 1 : quality === 'high' ? 0.85 : 0.52;
+      applySize(cssWidth, cssHeight);
+      options.onQualityChange?.(quality);
     },
     updateUniforms(input) {
       if (disposed) return;
@@ -368,11 +627,28 @@ export function createBlackHoleEngine(
       if (disposed) return;
       disposed = true;
       stopLoop();
+      frameScheduler.removeTask(WEBGL_TASK_ID);
       canvas.removeEventListener('webglcontextlost', handleContextLost);
       canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+
+      if (pendingGpuQuery && isGl2) {
+        (rawGl as WebGL2RenderingContext).deleteQuery(pendingGpuQuery);
+        pendingGpuQuery = null;
+      }
+
+      noiseLutTexture.dispose();
       geometry.dispose();
       material.dispose();
       renderer.dispose();
+      trackWebglContextChange(-1);
+      reportEngineTelemetry({
+        activeRenderMode: 'suspended',
+        canvasWidthPx: 0,
+        canvasHeightPx: 0,
+        canvasPixelCount: 0,
+        gpuFrameTimeMs: null,
+      });
+
       if (canvas.parentNode === container) {
         container.removeChild(canvas);
       }

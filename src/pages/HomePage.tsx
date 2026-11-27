@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, Compass, Infinity as InfinityIcon, Leaf, RefreshCw, ShieldCheck, Truck } from 'lucide-react';
 import { ProductCard } from '../components/commerce/ProductCard';
 import { HeroTraversalStage } from '../components/hero/HeroTraversalStage';
+import { HeroTraversalStageMobile } from '../components/hero/HeroTraversalStageMobile';
 import { Footer } from '../components/layout/Footer';
 import { SobreLimiarSection } from '../components/sobre/SobreLimiarSection';
 import {
@@ -62,6 +63,27 @@ export function HomePage() {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [activeSlideIndex] = useState(0);
+
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 768;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia('(max-width: 767px)');
+    const onChange = (e: MediaQueryListEvent) => {
+      setIsMobile(e.matches);
+    };
+    setIsMobile(mql.matches);
+    if (mql.addEventListener) {
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    } else if (mql.addListener) {
+      mql.addListener(onChange);
+      return () => mql.removeListener(onChange);
+    }
+  }, []);
 
   // Newsletter state
   const [newsletterEmail, setNewsletterEmail] = useState('');
@@ -405,14 +427,25 @@ export function HomePage() {
       {/* ================================================================
           CAPÍTULO 01: HERO PROCEDURAL + TRAVESSIA + COLEÇÕES + CATÁLOGO
           ================================================================ */}
-      <HeroTraversalStage
-        slide={currentSlide}
-        activeSlideIndex={activeSlideIndex}
-        totalSlides={HERO_SLIDES.length}
-        collections={collections}
-        onViewAllProducts={handleScrollToAllProducts}
-        postCollectionsContent={postCollectionsContent}
-      />
+      {isMobile ? (
+        <HeroTraversalStageMobile
+          slide={currentSlide}
+          activeSlideIndex={activeSlideIndex}
+          totalSlides={HERO_SLIDES.length}
+          collections={collections}
+          onViewAllProducts={handleScrollToAllProducts}
+          postCollectionsContent={postCollectionsContent}
+        />
+      ) : (
+        <HeroTraversalStage
+          slide={currentSlide}
+          activeSlideIndex={activeSlideIndex}
+          totalSlides={HERO_SLIDES.length}
+          collections={collections}
+          onViewAllProducts={handleScrollToAllProducts}
+          postCollectionsContent={postCollectionsContent}
+        />
+      )}
 
       {/* ================================================================
           CAPÍTULO 02: SEÇÃO INSTITUCIONAL — SOBRE A LIMIAR

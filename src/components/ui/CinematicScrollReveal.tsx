@@ -3,6 +3,7 @@ import { useScroll } from 'motion/react';
 import { computeRevealCurve } from '../../motion/gravitationalTimeline';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { clamp } from '../../motion/thresholdConfig';
+import { shouldEnableDynamicBlur } from '../../performance/performanceRuntime';
 
 type ScrollOffsetEdge =
   | 'start end'
@@ -74,10 +75,12 @@ export function CinematicScrollReveal({
       }
 
       const state = computeRevealCurve(localT, startY, startScale, startBlur);
-      node.style.willChange = 'transform, opacity';
+      const allowBlur = shouldEnableDynamicBlur();
+      node.style.willChange = state.opacity > 0.002 ? 'transform, opacity' : 'auto';
       node.style.opacity = String(state.opacity);
       node.style.transform = `perspective(1100px) translate3d(0, ${state.y}px, 0) scale(${state.scale}) rotateX(${state.rotateXDeg}deg)`;
-      node.style.filter = state.blurPx > 0.1 ? `blur(${state.blurPx}px)` : 'none';
+      node.style.filter =
+        allowBlur && state.blurPx > 0.1 ? `blur(${state.blurPx}px)` : 'none';
     };
 
     apply(scrollYProgress.get());

@@ -15,6 +15,7 @@ type ScrollListener = () => void;
 
 let activeLenis: Lenis | null = null;
 const scrollListeners = new Set<ScrollListener>();
+const wakeListeners = new Set<ScrollListener>();
 
 export function setLenisInstance(instance: Lenis | null): void {
   activeLenis = instance;
@@ -28,6 +29,13 @@ export function subscribePhysicsScroll(listener: ScrollListener): () => void {
   scrollListeners.add(listener);
   return () => {
     scrollListeners.delete(listener);
+  };
+}
+
+export function subscribePhysicsWake(listener: ScrollListener): () => void {
+  wakeListeners.add(listener);
+  return () => {
+    wakeListeners.delete(listener);
   };
 }
 
@@ -59,6 +67,7 @@ export function scrollToWithPhysics(
   const { immediate = false, duration = 1.15, offset = 0 } = options;
 
   if (activeLenis) {
+    wakeListeners.forEach((listener) => listener());
     if (immediate) {
       activeLenis.scrollTo(target, { immediate: true, force: true, offset });
       if (typeof target === 'number') {
