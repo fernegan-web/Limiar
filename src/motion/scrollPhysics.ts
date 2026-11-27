@@ -76,6 +76,10 @@ export function supportsCssScrollTimeline(): boolean {
   }
 }
 
+export function supportsCssScrollDrivenAnimations(): boolean {
+  return supportsCssScrollTimeline();
+}
+
 export interface MobileTraversalSpanInput {
   stableViewportHeight: number;
   collectionsOffsetPx: number;
