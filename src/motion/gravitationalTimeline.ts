@@ -126,7 +126,8 @@ export interface CollapseVectorConfig {
 
 export function computeElementCollapse(
   progress: number,
-  config: CollapseVectorConfig
+  config: CollapseVectorConfig,
+  isMobile = false
 ): GravitationalElementState {
   const p = clamp(progress, 0, 1);
   if (p <= 0.1) {
@@ -154,6 +155,28 @@ export function computeElementCollapse(
   const y = Number((config.pullY * combined).toFixed(2));
   const scale = Number((1 - wake * 0.035 - collapse * 0.58 - swallow * 0.24).toFixed(3));
   const stretch = combined * config.stretchFactor;
+
+  if (isMobile) {
+    const scaleX = Number(clamp(1 - stretch * 0.45, 0.55, 1.05).toFixed(3));
+    const scaleY = Number((1 + stretch * 1.15).toFixed(3));
+    const skewXDeg = Number((config.skewDeg * collapse).toFixed(2));
+    const rotateDeg = Number((config.rotateDeg * collapse).toFixed(2));
+    const opacity = Number(clamp(1 - collapse * 0.48 - swallow * 0.52, 0, 1).toFixed(3));
+
+    return {
+      x,
+      y,
+      scale: Math.max(0.12, scale),
+      scaleX,
+      scaleY,
+      skewXDeg,
+      rotateDeg,
+      blurPx: 0,
+      opacity,
+      pointerInteractive: p < 0.26 && opacity > 0.72,
+    };
+  }
+
   const scaleX = Number((1 + stretch).toFixed(3));
   const scaleY = Number(clamp(1 - stretch * 0.42, 0.45, 1.1).toFixed(3));
   const skewXDeg = Number((config.skewDeg * collapse).toFixed(2));
@@ -185,8 +208,10 @@ export interface SingularityFrameState {
   scale: number;
   /** Escala acelerada da moldura tribal (camada mais próxima da câmera) */
   wreathScale: number;
-  /** Desfoque progressivo de profundidade da moldura tribal em px */
+  /** Desfoque progressivo de profundidade da moldura tribal em px (desktop) */
   wreathBlurPx: number;
+  /** Fator de cross-fade [0..1] para asset pré-desfocado da moldura no mobile */
+  wreathBlurBlend: number;
   /** Raio normalizado do horizonte de eventos passado ao shader */
   horizonRadius: number;
   /** Intensidade de turbulência/acreção do shader */
@@ -217,18 +242,21 @@ export function computeSingularityFrame(progress: number, isMobile = false): Sin
     (1 + wake * 0.28 + collapse * 1.18 + horizon * (maxScale - 2.46)).toFixed(3)
   );
 
-  // Moldura tribal é a camada mais externa/próxima: acelera mais rápido e sai da viewport antes do buraco negro
+  // Moldura tribal é a camada mais externa/próxima: acelera mais rápido e sai da viewport antes do buraco negro.
+  // No mobile, a escala é limitada a ~5.4x pois a abertura central (~50% diâmetro) já ultrapassa os cantos da tela em p ≈ 0.58.
   const wreathWake = smootherstep(0.1, 0.34, p);
   const wreathSurge = smootherstep(0.28, 0.58, p);
   const wreathExit = smootherstep(0.5, 0.72, p);
-  const wreathScale = Number(
-    (1 + wreathWake * 1.45 + wreathSurge * (isMobile ? 4.8 : 5.4) + wreathExit * 5.2).toFixed(3)
-  );
+  const wreathScale = isMobile
+    ? Number((1 + wreathWake * 1.35 + wreathSurge * 2.95 + wreathExit * 0.1).toFixed(3))
+    : Number((1 + wreathWake * 1.45 + wreathSurge * 5.4 + wreathExit * 5.2).toFixed(3));
 
   // Mantém nitidez nos primeiros estágios; desfoque intensifica apenas na aproximação à câmera antes da saída
   const wreathBlurT = p <= 0.14 ? 0 : smootherstep(0.14, 0.62, p);
   const wreathBlurPx =
-    wreathBlurT <= 0.005 ? 0 : Number((Math.pow(wreathBlurT, 2.15) * 18).toFixed(2));
+    isMobile || wreathBlurT <= 0.005 ? 0 : Number((Math.pow(wreathBlurT, 2.15) * 18).toFixed(2));
+  const wreathBlurBlend =
+    wreathBlurT <= 0.005 ? 0 : Number(Math.pow(wreathBlurT, 1.85).toFixed(3));
 
   const horizonRadius = Number((0.48 + wake * 0.08 + collapse * 0.26 + horizon * 0.83).toFixed(3));
   const warpIntensity = Number((0.28 + wake * 0.45 + collapse * 0.85 + horizon * 0.55).toFixed(3));
@@ -247,6 +275,7 @@ export function computeSingularityFrame(progress: number, isMobile = false): Sin
     scale,
     wreathScale,
     wreathBlurPx,
+    wreathBlurBlend,
     horizonRadius,
     warpIntensity,
     heroVisibility,
@@ -275,35 +304,37 @@ export function computeRevealCurve(
   t: number,
   startY = 34,
   startScale = 0.94,
-  startBlur = 10
+  startBlur = 10,
+  disableBlurAnd3d = false
 ): RevealItemState {
   const eased = smootherstep(0, 1, t);
   return {
     opacity: Number(eased.toFixed(3)),
     y: Number(((1 - eased) * startY).toFixed(2)),
     scale: Number((startScale + eased * (1 - startScale)).toFixed(3)),
-    blurPx: Number(((1 - eased) * startBlur).toFixed(2)),
-    rotateXDeg: Number(((1 - eased) * 5).toFixed(2)),
+    blurPx: disableBlurAnd3d ? 0 : Number(((1 - eased) * startBlur).toFixed(2)),
+    rotateXDeg: disableBlurAnd3d ? 0 : Number(((1 - eased) * 5).toFixed(2)),
   };
 }
 
 export function computeCollectionsReveal(
   progress: number,
-  cardCount = 2
+  cardCount = 2,
+  isMobile = false
 ): CollectionsRevealState {
   const p = clamp(progress, 0, 1);
   const envOpacity = Number(rangeProgress(p, 0.72, 0.83).toFixed(3));
-  const header = computeRevealCurve(rangeProgress(p, 0.75, 0.84), 28, 0.97, 8);
+  const header = computeRevealCurve(rangeProgress(p, 0.75, 0.84), 28, 0.97, 8, isMobile);
 
   const safeCount = Math.max(0, cardCount);
   const cards: RevealItemState[] = [];
   for (let i = 0; i < safeCount; i++) {
     const start = Math.min(0.86, 0.78 + i * 0.04);
     const end = Math.min(0.91, start + 0.08);
-    cards.push(computeRevealCurve(rangeProgress(p, start, end), 42, 0.93, 12));
+    cards.push(computeRevealCurve(rangeProgress(p, start, end), 42, 0.93, 12, isMobile));
   }
 
-  const cta = computeRevealCurve(rangeProgress(p, 0.845, 0.91), 24, 0.96, 6);
+  const cta = computeRevealCurve(rangeProgress(p, 0.845, 0.91), 24, 0.96, 6, isMobile);
 
   return {
     envOpacity,

@@ -757,3 +757,44 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   font-weight: 600;
 }
 
+/* ==========================================================================
+   MOBILE-ONLY COMPOSITOR & FILTER OPTIMIZATIONS (<= 767px)
+   Desktop (>= 768px) permanece estritamente inalterado.
+   ========================================================================== */
+@media (max-width: 767px) {
+  :root {
+    --bg-surface: rgba(255, 255, 255, 0.78);
+    --bg-glass: rgba(242, 240, 234, 0.86);
+    --bg-glass-strong: rgba(246, 244, 239, 0.94);
+  }
+
+  .dark {
+    --bg-surface: rgba(23, 25, 26, 0.82);
+    --bg-glass: rgba(16, 18, 19, 0.88);
+    --bg-glass-strong: rgba(13, 15, 16, 0.94);
+  }
+
+  .limiar-grain {
+    display: none;
+  }
+
+  .glass-surface,
+  .glass-surface-strong,
+  .glass-card,
+  .uv-glow-btn {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  @keyframes limiarBlurIn {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 14px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+}
+

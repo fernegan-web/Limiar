@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import type { MotionValue } from 'motion/react';
 import { useRouter } from '../../context/RouterContext';
@@ -34,10 +34,40 @@ export function CollectionsRevealSection({
   const headerRef = useRef<HTMLDivElement | null>(null);
   const cardRefs = useRef<(HTMLElement | null)[]>([]);
   const ctaRef = useRef<HTMLDivElement | null>(null);
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+  );
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    let mobileHiddenApplied = false;
+    let mobileSettledApplied = false;
+
     const applyProgress = (p: number) => {
-      const state = computeCollectionsReveal(p, collections.length);
+      if (isMobile) {
+        if (p < 0.7) {
+          if (mobileHiddenApplied) return;
+          mobileHiddenApplied = true;
+          mobileSettledApplied = false;
+        } else if (p >= 0.95) {
+          if (mobileSettledApplied) return;
+          mobileSettledApplied = true;
+          mobileHiddenApplied = false;
+        } else {
+          mobileHiddenApplied = false;
+          mobileSettledApplied = false;
+        }
+      }
+
+      const state = computeCollectionsReveal(p, collections.length, isMobile);
 
       if (rootRef.current) {
         rootRef.current.style.pointerEvents = state.interactive ? 'auto' : 'none';
@@ -57,9 +87,16 @@ export function CollectionsRevealSection({
         if (h.opacity >= 0.999) {
           headerRef.current.style.transform = 'none';
           headerRef.current.style.filter = 'none';
+          if (isMobile) headerRef.current.style.willChange = 'auto';
         } else {
-          headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
-          headerRef.current.style.filter = h.blurPx > 0.1 ? `blur(${h.blurPx}px)` : 'none';
+          if (isMobile) {
+            headerRef.current.style.willChange = h.opacity > 0.005 ? 'transform, opacity' : 'auto';
+            headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
+            headerRef.current.style.filter = 'none';
+          } else {
+            headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
+            headerRef.current.style.filter = h.blurPx > 0.1 ? `blur(${h.blurPx}px)` : 'none';
+          }
         }
       }
 
@@ -69,6 +106,11 @@ export function CollectionsRevealSection({
         el.style.opacity = String(c.opacity);
         if (c.opacity >= 0.999) {
           el.style.transform = 'none';
+          el.style.filter = 'none';
+          if (isMobile) el.style.willChange = 'auto';
+        } else if (isMobile) {
+          el.style.willChange = c.opacity > 0.005 ? 'transform, opacity' : 'auto';
+          el.style.transform = `translate3d(0, ${c.y}px, 0) scale(${c.scale})`;
           el.style.filter = 'none';
         } else {
           el.style.transform = `perspective(1100px) translate3d(0, ${c.y}px, 0) scale(${c.scale}) rotateX(${c.rotateXDeg}deg)`;
@@ -81,6 +123,11 @@ export function CollectionsRevealSection({
         ctaRef.current.style.opacity = String(cta.opacity);
         if (cta.opacity >= 0.999) {
           ctaRef.current.style.transform = 'none';
+          ctaRef.current.style.filter = 'none';
+          if (isMobile) ctaRef.current.style.willChange = 'auto';
+        } else if (isMobile) {
+          ctaRef.current.style.willChange = cta.opacity > 0.005 ? 'transform, opacity' : 'auto';
+          ctaRef.current.style.transform = `translate3d(0, ${cta.y}px, 0) scale(${cta.scale})`;
           ctaRef.current.style.filter = 'none';
         } else {
           ctaRef.current.style.transform = `translate3d(0, ${cta.y}px, 0) scale(${cta.scale})`;
@@ -98,7 +145,7 @@ export function CollectionsRevealSection({
     applyProgress(progressMv?.get() ?? 0);
     const unsub = progressMv?.on('change', applyProgress);
     return () => unsub?.();
-  }, [progressMv, collections.length, staticMode]);
+  }, [progressMv, collections.length, staticMode, isMobile]);
 
   return (
     <section
@@ -116,7 +163,7 @@ export function CollectionsRevealSection({
         <div
           ref={envGlowRef}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[100dvh] opacity-0 transition-opacity duration-300"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[100svh] md:h-[100dvh] opacity-0 transition-opacity duration-300"
           style={{
             background:
               'radial-gradient(58% 46% at 50% 42%, var(--atmosphere-radial-1) 0%, transparent 72%)',
@@ -134,7 +181,7 @@ export function CollectionsRevealSection({
         {/* Cabeçalho da Seção de Coleções */}
         <div
           ref={headerRef}
-          className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 sm:mb-6 will-change-transform"
+          className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 sm:mb-6 md:will-change-transform"
         >
           <div className="space-y-1.5 sm:space-y-2">
             <div className="flex items-center gap-2 text-[var(--text-muted)]">
@@ -185,14 +232,14 @@ export function CollectionsRevealSection({
                   }
                 }}
                 data-testid={`reveal-collection-card-${col.slug}`}
-                className="group relative glass-card rounded-[22px] sm:rounded-[26px] overflow-hidden flex flex-col justify-between cursor-pointer will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-uv)]"
+                className="group relative glass-card rounded-[22px] sm:rounded-[26px] overflow-hidden flex flex-col justify-between cursor-pointer md:will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-uv)]"
               >
                 <div className="relative h-[106px] sm:h-[170px] lg:h-[210px] w-full overflow-hidden bg-[var(--bg-card-media)]">
                   <ResilientImage
                     src={col.image}
                     alt={`Coleção ${col.name}`}
                     sizes="(max-width: 768px) 92vw, 620px"
-                    loading="lazy"
+                    loading={isMobile ? 'eager' : 'lazy'}
                     className="w-full h-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
                   />
                   <div
@@ -243,7 +290,7 @@ export function CollectionsRevealSection({
         {/* Botão Final: Salto Direto para Todos os Produtos */}
         <div
           ref={ctaRef}
-          className="mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 will-change-transform"
+          className="mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 md:will-change-transform"
         >
           <UltravioletButton
             type="button"

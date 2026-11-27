@@ -184,3 +184,36 @@ test('computeCollectionsReveal reveals environment, header, cards sequentially, 
   assert.equal(done.cta.opacity, 1);
   assert.equal(done.cta.blurPx, 0);
 });
+
+test('mobile mode disables CSS blur/3D perspective and bounds wreathScale while keeping desktop untouched', () => {
+  const desktopMid = computeElementCollapse(
+    0.45,
+    { pullX: 0, pullY: 160, stretchFactor: 0.18, skewDeg: -4, rotateDeg: 2 },
+    false
+  );
+  const mobileMid = computeElementCollapse(
+    0.45,
+    { pullX: 0, pullY: 160, stretchFactor: 0.18, skewDeg: -4, rotateDeg: 2 },
+    true
+  );
+  assert.ok(desktopMid.blurPx > 2);
+  assert.equal(mobileMid.blurPx, 0);
+  assert.ok(mobileMid.scaleY > 1);
+  assert.ok(mobileMid.scaleX < 1);
+
+  const desktopFrame = computeSingularityFrame(0.65, false);
+  const mobileFrame = computeSingularityFrame(0.65, true);
+  assert.ok(desktopFrame.wreathScale > 10);
+  assert.ok(desktopFrame.wreathBlurPx > 10);
+  assert.ok(mobileFrame.wreathScale <= 5.4);
+  assert.equal(mobileFrame.wreathBlurPx, 0);
+  assert.equal(mobileFrame.wreathBlurBlend, 1);
+
+  const mobileReveal = computeCollectionsReveal(0.82, 2, true);
+  assert.equal(mobileReveal.header.blurPx, 0);
+  assert.equal(mobileReveal.header.rotateXDeg, 0);
+  assert.equal(mobileReveal.cards[0].blurPx, 0);
+  assert.equal(mobileReveal.cards[0].rotateXDeg, 0);
+  assert.equal(mobileReveal.cta.blurPx, 0);
+});
+
