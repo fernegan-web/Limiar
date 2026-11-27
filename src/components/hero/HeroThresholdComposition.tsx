@@ -169,11 +169,11 @@ export function HeroThresholdComposition({
           className="w-full"
         >
           <motion.div
-            initial={{ opacity: 0, y: 14 }}
+            initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
             animate={
               shouldPlayEntrance
-                ? { opacity: 1, y: 0 }
-                : { opacity: 0, y: 14 }
+                ? { opacity: 1, y: 0, filter: 'blur(0px)' }
+                : { opacity: 0, y: 14, filter: 'blur(4px)' }
             }
             transition={{ duration: 0.5, delay: 0.09, ease: THRESHOLD_EASE }}
           >

@@ -15,7 +15,6 @@ import {
   useThresholdPointer,
 } from './motion/ThresholdMotionProvider';
 import { HomePage } from './pages/HomePage';
-import { isPerformanceDebugEnabled } from './performance/performanceRuntime';
 import { validateAndLogWixCatalogConnection } from './services/wix/wixProductsService';
 
 const CatalogPage = lazy(() =>
@@ -44,11 +43,6 @@ const SearchOverlay = lazy(() =>
 );
 const AccountModal = lazy(() =>
   import('./components/commerce/AccountModal').then((m) => ({ default: m.AccountModal }))
-);
-const PerformanceDebugOverlay = lazy(() =>
-  import('./components/debug/PerformanceDebugOverlay').then((m) => ({
-    default: m.PerformanceDebugOverlay,
-  }))
 );
 
 function AppShell() {
@@ -189,11 +183,6 @@ function AppShell() {
       )}
       <WhatsAppFloatingButton hidden={searchOpen || accountOpen || isDrawerOpen} />
       <OrbitalCursor />
-      {isPerformanceDebugEnabled() && (
-        <Suspense fallback={null}>
-          <PerformanceDebugOverlay />
-        </Suspense>
-      )}
       {introActive && (
         <PortalIntroOverlay
           onPortalOpen={markPortalRevealed}

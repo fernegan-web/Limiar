@@ -8,12 +8,7 @@ import {
   useSpring,
   type MotionValue,
 } from 'motion/react';
-import {
-  notifyPhysicsScroll,
-  setLenisInstance,
-  subscribePhysicsWake,
-} from './scrollPhysics';
-import { initPerformanceRuntime } from '../performance/performanceRuntime';
+import { notifyPhysicsScroll, setLenisInstance } from './scrollPhysics';
 import { THRESHOLD_SPRING, computeNormalizedPointer } from './thresholdConfig';
 
 interface ThresholdPointerContextValue {
@@ -57,7 +52,6 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
   // Motor global de inércia para wheel/trackpad (preserva 100% o touch nativo no mobile)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    initPerformanceRuntime();
 
     const lenis = new Lenis({
       smoothWheel: true,
@@ -95,54 +89,24 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       emitIfChanged(instance.scroll);
     });
 
-    let rafId = 0;
-    let idleTicks = 0;
-
-    const tick = (now: number) => {
-      rafId = 0;
-      if (document.visibilityState === 'hidden') {
-        idleTicks = 0;
-        return;
-      }
-      lenis.raf(now);
-      if (lenis.isScrolling) {
-        idleTicks = 0;
-        rafId = window.requestAnimationFrame(tick);
-      } else if (idleTicks < 2) {
-        idleTicks += 1;
-        rafId = window.requestAnimationFrame(tick);
-      } else {
-        idleTicks = 0;
-      }
-    };
-
-    const wakeLenisLoop = () => {
-      if (document.visibilityState === 'hidden') return;
-      idleTicks = 0;
-      if (!rafId) {
-        rafId = window.requestAnimationFrame(tick);
-      }
-    };
-
     // Fallback para scroll nativo tátil no mobile quando syncTouch está desativado
     const handleNativeScroll = () => {
       if (!lenis.isScrolling) {
         emitIfChanged(window.scrollY);
       }
     };
-    const handleWheelWake = () => {
-      wakeLenisLoop();
-    };
-    const unsubPhysicsWake = subscribePhysicsWake(wakeLenisLoop);
-
     window.addEventListener('scroll', handleNativeScroll, { passive: true });
-    window.addEventListener('wheel', handleWheelWake, { passive: true });
-    window.addEventListener('keydown', handleWheelWake, { passive: true });
 
-    const observer = new MutationObserver(() => {
-      syncStopState();
-      wakeLenisLoop();
-    });
+    let rafId = 0;
+    const tick = (now: number) => {
+      if (document.visibilityState !== 'hidden') {
+        lenis.raf(now);
+      }
+      rafId = window.requestAnimationFrame(tick);
+    };
+    rafId = window.requestAnimationFrame(tick);
+
+    const observer = new MutationObserver(syncStopState);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class', 'data-scroll-locked'],
@@ -152,10 +116,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       if (rafId) window.cancelAnimationFrame(rafId);
       observer.disconnect();
       unsubLenisScroll();
-      unsubPhysicsWake();
       window.removeEventListener('scroll', handleNativeScroll);
-      window.removeEventListener('wheel', handleWheelWake);
-      window.removeEventListener('keydown', handleWheelWake);
       setLenisInstance(null);
       lenisRef.current = null;
       lenis.destroy();

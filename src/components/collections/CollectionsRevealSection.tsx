@@ -3,7 +3,6 @@ import { ArrowRight } from 'lucide-react';
 import type { MotionValue } from 'motion/react';
 import { useRouter } from '../../context/RouterContext';
 import { computeCollectionsReveal } from '../../motion/gravitationalTimeline';
-import { shouldEnableDynamicBlur } from '../../performance/performanceRuntime';
 import type { Collection } from '../../types/commerce';
 import {
   CybersigilismCorner,
@@ -35,19 +34,10 @@ export function CollectionsRevealSection({
   const headerRef = useRef<HTMLDivElement | null>(null);
   const cardRefs = useRef<(HTMLElement | null)[]>([]);
   const ctaRef = useRef<HTMLDivElement | null>(null);
-  const isParkedHiddenRef = useRef<boolean>(false);
 
   useEffect(() => {
     const applyProgress = (p: number) => {
-      if (!staticMode && p < 0.71) {
-        if (isParkedHiddenRef.current) return;
-        isParkedHiddenRef.current = true;
-      } else {
-        isParkedHiddenRef.current = false;
-      }
-
       const state = computeCollectionsReveal(p, collections.length);
-      const allowBlur = shouldEnableDynamicBlur();
 
       if (rootRef.current) {
         rootRef.current.style.pointerEvents = state.interactive ? 'auto' : 'none';
@@ -67,16 +57,9 @@ export function CollectionsRevealSection({
         if (h.opacity >= 0.999) {
           headerRef.current.style.transform = 'none';
           headerRef.current.style.filter = 'none';
-          headerRef.current.style.willChange = 'auto';
-        } else if (h.opacity <= 0.002) {
-          headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
-          headerRef.current.style.filter = 'none';
-          headerRef.current.style.willChange = 'auto';
         } else {
-          headerRef.current.style.willChange = 'transform, opacity';
           headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
-          headerRef.current.style.filter =
-            allowBlur && h.blurPx > 0.1 ? `blur(${h.blurPx}px)` : 'none';
+          headerRef.current.style.filter = h.blurPx > 0.1 ? `blur(${h.blurPx}px)` : 'none';
         }
       }
 
@@ -87,16 +70,9 @@ export function CollectionsRevealSection({
         if (c.opacity >= 0.999) {
           el.style.transform = 'none';
           el.style.filter = 'none';
-          el.style.willChange = 'auto';
-        } else if (c.opacity <= 0.002) {
-          el.style.transform = `perspective(1100px) translate3d(0, ${c.y}px, 0) scale(${c.scale}) rotateX(${c.rotateXDeg}deg)`;
-          el.style.filter = 'none';
-          el.style.willChange = 'auto';
         } else {
-          el.style.willChange = 'transform, opacity';
           el.style.transform = `perspective(1100px) translate3d(0, ${c.y}px, 0) scale(${c.scale}) rotateX(${c.rotateXDeg}deg)`;
-          el.style.filter =
-            allowBlur && c.blurPx > 0.1 ? `blur(${c.blurPx}px)` : 'none';
+          el.style.filter = c.blurPx > 0.1 ? `blur(${c.blurPx}px)` : 'none';
         }
       });
 
@@ -106,16 +82,10 @@ export function CollectionsRevealSection({
         if (cta.opacity >= 0.999) {
           ctaRef.current.style.transform = 'none';
           ctaRef.current.style.filter = 'none';
-          ctaRef.current.style.willChange = 'auto';
-        } else if (cta.opacity <= 0.002) {
-          ctaRef.current.style.transform = `translate3d(0, ${cta.y}px, 0) scale(${cta.scale})`;
-          ctaRef.current.style.filter = 'none';
-          ctaRef.current.style.willChange = 'auto';
         } else {
-          ctaRef.current.style.willChange = 'transform, opacity';
           ctaRef.current.style.transform = `translate3d(0, ${cta.y}px, 0) scale(${cta.scale})`;
           ctaRef.current.style.filter =
-            allowBlur && cta.blurPx > 0.1 ? `blur(${cta.blurPx}px)` : 'none';
+            cta.blurPx > 0.1 ? `blur(${cta.blurPx}px)` : 'none';
         }
       }
     };
