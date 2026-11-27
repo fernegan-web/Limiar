@@ -9,7 +9,7 @@ import {
 } from '../components/ornaments/CybersigilismOrnaments';
 import { THRESHOLD_EASE } from '../motion/thresholdConfig';
 import { useRouter } from '../context/RouterContext';
-import { fetchCategories, fetchCollections, fetchProducts } from '../services/catalogService';
+import { fetchCategories, fetchCollections, fetchProducts, invalidateCatalogCache } from '../services/catalogService';
 import type { Category, Collection, Product, ProductSize, SortOption } from '../types/commerce';
 
 const SIZE_OPTIONS: ProductSize[] = ['P', 'M', 'G', 'GG', 'XG'];
@@ -42,9 +42,12 @@ export function CatalogPage() {
     if (params.has('busca')) setSearchTerm(params.get('busca') || '');
   }, [search]);
 
-  const loadCatalog = async () => {
+  const loadCatalog = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
+    if (forceRefresh) {
+      invalidateCatalogCache();
+    }
     try {
       const [items, cats, cols] = await Promise.all([
         fetchProducts({
@@ -87,7 +90,7 @@ export function CatalogPage() {
     selectedSize !== '';
 
   return (
-    <div className="relative overflow-hidden">
+    <div className="relative overflow-x-clip">
       <div className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-10 pb-20 space-y-10">
         {/* Cabeçalho da Loja */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -244,7 +247,7 @@ export function CatalogPage() {
             </div>
             <button
               type="button"
-              onClick={loadCatalog}
+              onClick={() => loadCatalog(true)}
               className="px-4 py-2 rounded-full border border-[var(--border-strong)] text-xs uppercase tracking-[0.14em] text-[var(--text-primary)]"
             >
               Tentar novamente

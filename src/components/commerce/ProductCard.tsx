@@ -29,6 +29,10 @@ export function ProductCard({ product }: ProductCardProps) {
 
   const firstAvailableVariant =
     product.variants.find((v) => v.inStock) ?? product.variants[0];
+  const requiresVariantSelection =
+    Boolean(product.manageVariants) ||
+    (product.options?.length ?? 0) > 0 ||
+    product.variants.length > 1;
 
   const handleOpenProduct = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -37,7 +41,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
   const handleQuickAdd = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    if (!firstAvailableVariant || !firstAvailableVariant.inStock) {
+    if (requiresVariantSelection || !firstAvailableVariant || !firstAvailableVariant.inStock) {
       navigate(`/produto/${product.slug}`);
       return;
     }
@@ -112,9 +116,16 @@ export function ProductCard({ product }: ProductCardProps) {
           >
             {product.name}
           </a>
-          <p className="mt-0.5 text-sm text-[var(--text-secondary)] tabular-nums">
-            {product.formattedPrice}
-          </p>
+          <div className="mt-0.5 flex items-baseline gap-2 tabular-nums">
+            <span className="text-sm text-[var(--text-secondary)]">
+              {product.formattedPrice}
+            </span>
+            {product.formattedOriginalPrice && (
+              <span className="text-xs text-[var(--text-muted)] line-through">
+                {product.formattedOriginalPrice}
+              </span>
+            )}
+          </div>
         </div>
 
         <motion.button
@@ -122,8 +133,16 @@ export function ProductCard({ product }: ProductCardProps) {
           whileHover={{ scale: 1.07 }}
           whileTap={{ scale: 0.9 }}
           onClick={handleQuickAdd}
-          aria-label={`Adicionar ${product.name} ao carrinho`}
-          title={`Adicionar ${product.name} (${firstAvailableVariant?.size ?? ''})`}
+          aria-label={
+            requiresVariantSelection
+              ? `Escolher opções de ${product.name}`
+              : `Adicionar ${product.name} ao carrinho`
+          }
+          title={
+            requiresVariantSelection
+              ? `Escolher opções de ${product.name}`
+              : `Adicionar ${product.name}`
+          }
           className={`shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-full border transition-all duration-200 ${
             addedPulse
               ? 'border-[var(--accent-acid)] bg-[var(--bg-surface-hover)] text-[var(--accent-acid)] shadow-[0_0_18px_var(--accent-uv-glow)]'

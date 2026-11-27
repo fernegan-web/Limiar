@@ -4,6 +4,7 @@ import { MessageCircle, Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react
 import { useCart } from '../../context/CartContext';
 import { useRouter } from '../../context/RouterContext';
 import { THRESHOLD_DURATIONS, THRESHOLD_EASE, THRESHOLD_SPRING } from '../../motion/thresholdConfig';
+import { formatCartVariantLabel } from '../../services/cartService';
 import { getWixIntegrationStatus } from '../../services/wix/wixClient';
 import { proceedToWixCheckout } from '../../services/wix/wixCheckoutService';
 import { formatBRL } from '../../utils/validation';
@@ -16,8 +17,11 @@ export function CartDrawer() {
     items,
     subtotal,
     totalItems,
+    syncing,
+    cartError,
     isDrawerOpen,
     closeDrawer,
+    clearCartError,
     updateQuantity,
     removeItem,
     clearCart,
@@ -28,13 +32,27 @@ export function CartDrawer() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isDrawerOpen) return;
+    const handlePageShow = () => {
+      setCheckingOut(false);
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
+  useEffect(() => {
+    if (!isDrawerOpen) {
+      setCheckingOut(false);
+      return;
+    }
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeDrawer();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [isDrawerOpen, closeDrawer]);
+
+  const busy = checkingOut || syncing;
+  const activeError = checkoutError || cartError;
 
   return (
     <AnimatePresence>
@@ -75,6 +93,11 @@ export function CartDrawer() {
                 <span className="text-xs text-[var(--text-muted)] tabular-nums">
                   ({totalItems})
                 </span>
+                {syncing && (
+                  <span className="text-[11px] text-[var(--text-muted)] animate-pulse">
+                    Sincronizando…
+                  </span>
+                )}
               </div>
               <button
                 type="button"
@@ -88,6 +111,26 @@ export function CartDrawer() {
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto py-5 space-y-4">
+              {activeError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-[var(--accent-terracotta)]/40 bg-[var(--bg-surface)] px-3.5 py-2.5 flex items-start justify-between gap-2 text-xs text-[var(--accent-terracotta)]"
+                >
+                  <span>{activeError}</span>
+                  <button
+                    type="button"
+                    aria-label="Fechar aviso do carrinho"
+                    onClick={() => {
+                      setCheckoutError(null);
+                      clearCartError();
+                    }}
+                    className="shrink-0 opacity-75 hover:opacity-100"
+                  >
+                    <X className="w-3.5 h-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+
               {items.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center px-4 py-12 space-y-4">
                   <div className="w-14 h-14 rounded-full border border-[var(--border-hairline)] flex items-center justify-center text-[var(--text-muted)]">
@@ -114,93 +157,111 @@ export function CartDrawer() {
                 </div>
               ) : (
                 <AnimatePresence initial={false}>
-                  {items.map((item) => (
-                    <motion.div
-                      key={item.lineId}
-                      layout
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, x: 24, transition: { duration: 0.18 } }}
-                      transition={{ type: 'spring', ...THRESHOLD_SPRING.drawer }}
-                      className="flex gap-4 p-3 rounded-2xl border border-[var(--border-hairline)] bg-[var(--bg-surface)]"
-                    >
-                      <a
-                        href={`/produto/${item.slug}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          closeDrawer();
-                          navigate(`/produto/${item.slug}`);
-                        }}
-                        className="w-20 h-24 rounded-xl overflow-hidden bg-[var(--bg-card-media)] shrink-0"
+                  {items.map((item) => {
+                    const reachedMaxStock =
+                      typeof item.stockCount === 'number' &&
+                      item.stockCount > 0 &&
+                      item.quantity >= item.stockCount;
+                    return (
+                      <motion.div
+                        key={item.lineId}
+                        layout
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: 24, transition: { duration: 0.18 } }}
+                        transition={{ type: 'spring', ...THRESHOLD_SPRING.drawer }}
+                        className="flex gap-4 p-3 rounded-2xl border border-[var(--border-hairline)] bg-[var(--bg-surface)]"
                       >
-                        <ResilientImage
-                          src={item.image}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </a>
+                        <a
+                          href={`/produto/${item.slug}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            closeDrawer();
+                            navigate(`/produto/${item.slug}`);
+                          }}
+                          className="w-20 h-24 rounded-xl overflow-hidden bg-[var(--bg-card-media)] shrink-0"
+                        >
+                          <ResilientImage
+                            src={item.image}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </a>
 
-                      <div className="flex-1 min-w-0 flex flex-col justify-between">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <a
-                              href={`/produto/${item.slug}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                closeDrawer();
-                                navigate(`/produto/${item.slug}`);
+                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <a
+                                href={`/produto/${item.slug}`}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  closeDrawer();
+                                  navigate(`/produto/${item.slug}`);
+                                }}
+                                className="block font-display text-sm font-medium uppercase tracking-[0.04em] text-[var(--text-primary)] truncate"
+                              >
+                                {item.name}
+                              </a>
+                              <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
+                                {formatCartVariantLabel(item)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                setCheckoutError(null);
+                                removeItem(item.lineId);
                               }}
-                              className="block font-display text-sm font-medium uppercase tracking-[0.04em] text-[var(--text-primary)] truncate"
+                              aria-label={`Remover ${item.name} do carrinho`}
+                              className="text-[var(--text-muted)] hover:text-[var(--accent-terracotta)] p-1 transition-colors disabled:opacity-45"
                             >
-                              {item.name}
-                            </a>
-                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              Tam. {item.size} · {item.colorName}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeItem(item.lineId)}
-                            aria-label={`Remover ${item.name} do carrinho`}
-                            className="text-[var(--text-muted)] hover:text-[var(--accent-terracotta)] p-1 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                          </button>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-2">
-                          <div className="inline-flex items-center rounded-full border border-[var(--border-hairline)] bg-[var(--bg-glass)]">
-                            <button
-                              type="button"
-                              onClick={() => updateQuantity(item.lineId, item.quantity - 1)}
-                              aria-label={`Diminuir quantidade de ${item.name}`}
-                              className="w-7 h-7 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                            >
-                              <Minus className="w-3 h-3" aria-hidden="true" />
+                              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                             </button>
-                            <span
-                              data-testid={`qty-${item.slug}`}
-                              className="w-7 text-center text-xs font-medium tabular-nums text-[var(--text-primary)]"
-                            >
-                              {item.quantity}
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2">
+                            <div className="inline-flex items-center rounded-full border border-[var(--border-hairline)] bg-[var(--bg-glass)]">
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => {
+                                  setCheckoutError(null);
+                                  updateQuantity(item.lineId, item.quantity - 1);
+                                }}
+                                aria-label={`Diminuir quantidade de ${item.name}`}
+                                className="w-7 h-7 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45"
+                              >
+                                <Minus className="w-3 h-3" aria-hidden="true" />
+                              </button>
+                              <span
+                                data-testid={`qty-${item.slug}`}
+                                className="w-7 text-center text-xs font-medium tabular-nums text-[var(--text-primary)]"
+                              >
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={busy || reachedMaxStock}
+                                onClick={() => {
+                                  setCheckoutError(null);
+                                  updateQuantity(item.lineId, item.quantity + 1);
+                                }}
+                                aria-label={`Aumentar quantidade de ${item.name}`}
+                                className="w-7 h-7 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45"
+                              >
+                                <Plus className="w-3 h-3" aria-hidden="true" />
+                              </button>
+                            </div>
+
+                            <span className="text-sm font-medium text-[var(--text-primary)] tabular-nums">
+                              {formatBRL(item.price * item.quantity)}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => updateQuantity(item.lineId, item.quantity + 1)}
-                              aria-label={`Aumentar quantidade de ${item.name}`}
-                              className="w-7 h-7 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                            >
-                              <Plus className="w-3 h-3" aria-hidden="true" />
-                            </button>
                           </div>
-
-                          <span className="text-sm font-medium text-[var(--text-primary)] tabular-nums">
-                            {formatBRL(item.price * item.quantity)}
-                          </span>
                         </div>
-                      </div>
-                    </motion.div>
-                  ))}
+                      </motion.div>
+                    );
+                  })}
                 </AnimatePresence>
               )}
             </div>
@@ -239,10 +300,11 @@ export function CartDrawer() {
                         variant="primary"
                         size="md"
                         className="w-full"
-                        disabled={checkingOut}
+                        disabled={busy}
                         onClick={async () => {
                           setCheckingOut(true);
                           setCheckoutError(null);
+                          clearCartError();
                           const res = await proceedToWixCheckout(items);
                           if (!res.success) {
                             setCheckoutError(res.message || 'Erro ao iniciar checkout.');
@@ -252,11 +314,6 @@ export function CartDrawer() {
                       >
                         {checkingOut ? 'Conectando ao Checkout...' : 'Finalizar compra'}
                       </UltravioletButton>
-                      {checkoutError && (
-                        <p role="alert" className="text-xs text-[var(--accent-terracotta)] text-center">
-                          {checkoutError}
-                        </p>
-                      )}
                     </div>
                   ) : (
                     <UltravioletButton
@@ -273,8 +330,12 @@ export function CartDrawer() {
                   )}
                   <button
                     type="button"
-                    onClick={clearCart}
-                    className="py-3 px-4 rounded-full border border-[var(--border-hairline)] text-xs uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+                    disabled={busy}
+                    onClick={() => {
+                      setCheckoutError(null);
+                      clearCart();
+                    }}
+                    className="py-3 px-4 rounded-full border border-[var(--border-hairline)] text-xs uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors disabled:opacity-45"
                   >
                     Limpar
                   </button>

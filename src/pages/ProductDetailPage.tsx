@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, Check, ChevronDown, MessageCircle, Minus, Plus } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, ChevronDown, MessageCircle, Minus, Plus } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import {
   CybersigilismCorner,
@@ -11,12 +11,79 @@ import { UltravioletButton } from '../components/ui/UltravioletButton';
 import { THRESHOLD_EASE } from '../motion/thresholdConfig';
 import { useCart } from '../context/CartContext';
 import { useRouter } from '../context/RouterContext';
-import { fetchProductBySlug } from '../services/catalogService';
-import type { Product, ProductVariant, ProductSize } from '../types/commerce';
+import {
+  fetchProductBySlug,
+  isOptionChoiceCompatibleWithSelection,
+  isOptionChoiceGloballyInStock,
+  resolveProductVariant,
+  selectProductOptionWithReconciliation,
+} from '../services/catalogService';
+import type { Product, ProductOption, ProductVariant } from '../types/commerce';
 import { buildProductWhatsAppUrl } from '../utils/whatsapp';
 
 interface ProductDetailPageProps {
   slug: string;
+}
+
+function buildFallbackOptions(product: Product): ProductOption[] {
+  if (product.options && product.options.length > 0) {
+    return product.options;
+  }
+  if (product.variants.length <= 1) return [];
+
+  const options: ProductOption[] = [];
+  const sizes = Array.from(new Set(product.variants.map((v) => String(v.size)))).filter(
+    (s) => s && s !== 'Único'
+  );
+  if (sizes.length > 0) {
+    options.push({
+      name: 'Tamanho',
+      optionType: 'drop_down',
+      choices: sizes.map((s) => ({
+        value: s,
+        description: s,
+        inStock: product.variants.some((v) => String(v.size) === s && v.inStock),
+        visible: true,
+      })),
+    });
+  }
+
+  const colors = Array.from(new Set(product.variants.map((v) => v.colorName))).filter(
+    (c) => c && c !== 'Padrão'
+  );
+  if (colors.length > 0) {
+    options.push({
+      name: 'Cor',
+      optionType: 'color',
+      choices: colors.map((c) => ({
+        value: c,
+        description: c,
+        inStock: product.variants.some((v) => v.colorName === c && v.inStock),
+        visible: true,
+      })),
+    });
+  }
+
+  return options;
+}
+
+function getInitialChoices(product: Product, displayOptions: ProductOption[]): Record<string, string> {
+  const firstInStock = product.variants.find((v) => v.inStock) ?? product.variants[0];
+  if (!firstInStock) return {};
+  if (firstInStock.choices && Object.keys(firstInStock.choices).length > 0) {
+    return { ...firstInStock.choices };
+  }
+  const derived: Record<string, string> = {};
+  for (const opt of displayOptions) {
+    if (/tamanh|size/i.test(opt.name)) {
+      derived[opt.name] = String(firstInStock.size);
+    } else if (/cor|color/i.test(opt.name)) {
+      derived[opt.name] = firstInStock.colorName;
+    } else if (opt.choices[0]) {
+      derived[opt.name] = opt.choices[0].value;
+    }
+  }
+  return derived;
 }
 
 export function ProductDetailPage({ slug }: ProductDetailPageProps) {
@@ -25,47 +92,109 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
-  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
-  const [selectedSize, setSelectedSize] = useState<ProductSize | ''>('');
-  const [selectedColor, setSelectedColor] = useState<string>('');
+  const [selectedChoices, setSelectedChoices] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState(1);
   const [addedFeedback, setAddedFeedback] = useState(false);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setLoadError(null);
     setActiveImageIdx(0);
     setQuantity(1);
-    fetchProductBySlug(slug).then((found) => {
-      if (!active) return;
-      setProduct(found);
-      if (found) {
-        const firstInStock = found.variants.find((v) => v.inStock) ?? found.variants[0] ?? null;
-        if (firstInStock) {
-          setSelectedSize(firstInStock.size);
-          setSelectedColor(firstInStock.colorName);
-          setSelectedVariant(firstInStock);
+    fetchProductBySlug(slug)
+      .then((found) => {
+        if (!active) return;
+        setProduct(found);
+        if (found) {
+          const opts = buildFallbackOptions(found);
+          setSelectedChoices(getInitialChoices(found, opts));
         }
-      }
-      setLoading(false);
-    });
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setLoadError('Não foi possível carregar os detalhes desta peça.');
+        setLoading(false);
+      });
     return () => {
       active = false;
     };
   }, [slug]);
 
-  useEffect(() => {
-    if (!product) return;
-    const match =
-      product.variants.find((v) => v.size === selectedSize && v.colorName === selectedColor) ||
-      product.variants.find((v) => v.size === selectedSize) ||
-      product.variants[0] ||
-      null;
-    if (match) {
-      setSelectedVariant(match);
+  const displayOptions = useMemo(
+    () => (product ? buildFallbackOptions(product) : []),
+    [product]
+  );
+
+  const selectedVariant: ProductVariant | null = useMemo(() => {
+    if (!product) return null;
+    if (displayOptions.length === 0 || product.variants.length <= 1) {
+      return product.variants[0] ?? null;
     }
-  }, [selectedSize, selectedColor, product]);
+    const syntheticProduct: Product =
+      product.options && product.options.length > 0
+        ? product
+        : {
+            ...product,
+            options: displayOptions,
+            variants: product.variants.map((v) => ({
+              ...v,
+              choices:
+                v.choices && Object.keys(v.choices).length > 0
+                  ? v.choices
+                  : {
+                      ...(v.size && v.size !== 'Único' ? { Tamanho: String(v.size) } : {}),
+                      ...(v.colorName && v.colorName !== 'Padrão' ? { Cor: v.colorName } : {}),
+                    },
+            })),
+          };
+    return resolveProductVariant(syntheticProduct, selectedChoices);
+  }, [product, displayOptions, selectedChoices]);
+
+  useEffect(() => {
+    if (!product || !selectedVariant) return;
+    if (
+      selectedVariant.trackQuantity &&
+      typeof selectedVariant.stockCount === 'number' &&
+      selectedVariant.stockCount > 0 &&
+      quantity > selectedVariant.stockCount
+    ) {
+      setQuantity(selectedVariant.stockCount);
+    }
+    if (selectedVariant.imageUrl) {
+      const idx = product.images.findIndex((url) => url === selectedVariant.imageUrl);
+      if (idx >= 0) {
+        setActiveImageIdx(idx);
+      }
+    }
+  }, [product, selectedVariant, quantity]);
+
+  const handleSelectOption = (optionName: string, choiceValue: string) => {
+    if (!product) return;
+    const syntheticProduct: Product =
+      product.options && product.options.length > 0
+        ? product
+        : {
+            ...product,
+            options: displayOptions,
+            variants: product.variants.map((v) => ({
+              ...v,
+              choices:
+                v.choices && Object.keys(v.choices).length > 0
+                  ? v.choices
+                  : {
+                      ...(v.size && v.size !== 'Único' ? { Tamanho: String(v.size) } : {}),
+                      ...(v.colorName && v.colorName !== 'Padrão' ? { Cor: v.colorName } : {}),
+                    },
+            })),
+          };
+    setSelectedChoices((prev) =>
+      selectProductOptionWithReconciliation(syntheticProduct, prev, optionName, choiceValue)
+    );
+  };
 
   if (loading) {
     return (
@@ -76,6 +205,21 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
           <div className="h-10 w-64 rounded bg-[var(--border-hairline)]" />
           <div className="h-6 w-28 rounded bg-[var(--border-hairline)]" />
         </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-[1360px] px-4 sm:px-8 py-24 text-center space-y-5">
+        <AlertCircle className="w-8 h-8 mx-auto text-[var(--accent-terracotta)]" aria-hidden="true" />
+        <h1 className="font-display text-2xl uppercase tracking-[0.06em] text-[var(--text-primary)]">
+          Erro ao carregar produto
+        </h1>
+        <p className="text-sm text-[var(--text-muted)]">{loadError}</p>
+        <UltravioletButton href="/loja" variant="secondary">
+          Voltar à loja
+        </UltravioletButton>
       </div>
     );
   }
@@ -96,8 +240,19 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
     );
   }
 
+  const maxStock =
+    selectedVariant?.trackQuantity && typeof selectedVariant.stockCount === 'number'
+      ? Math.max(1, selectedVariant.stockCount)
+      : undefined;
+
+  const canPurchase = Boolean(
+    selectedVariant &&
+      selectedVariant.inStock &&
+      displayOptions.every((opt) => Boolean(selectedChoices[opt.name]))
+  );
+
   const handleAddToCart = () => {
-    if (!selectedVariant || !selectedVariant.inStock) return;
+    if (!canPurchase || !selectedVariant) return;
     addItem(product, selectedVariant, quantity);
     setAddedFeedback(true);
     window.setTimeout(() => setAddedFeedback(false), 1800);
@@ -108,30 +263,40 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
       ? `${window.location.origin}/produto/${product.slug}`
       : `/produto/${product.slug}`;
 
-  const variantSummary = selectedVariant
-    ? `Tam. ${selectedVariant.size} · ${selectedVariant.colorName}`
-    : undefined;
+  const variantParts = displayOptions
+    .map((opt) => (selectedChoices[opt.name] ? `${opt.name}: ${selectedChoices[opt.name]}` : null))
+    .filter((v): v is string => Boolean(v));
+
+  const variantSummary =
+    variantParts.length > 0
+      ? variantParts.join(' · ')
+      : selectedVariant && (selectedVariant.size !== 'Único' || selectedVariant.colorName !== 'Padrão')
+        ? `${selectedVariant.size} · ${selectedVariant.colorName}`
+        : undefined;
 
   const whatsappBuyHref = buildProductWhatsAppUrl({
     productName: product.name,
     variantLabel: variantSummary,
+    quantity,
     productUrl: productPageUrl,
   });
 
-  const availableSizes =
-    product.availableSizes && product.availableSizes.length > 0
-      ? product.availableSizes
-      : Array.from(new Set(product.variants.map((v) => v.size)));
+  const displayedPrice = selectedVariant?.formattedPrice || product.formattedPrice;
+  const displayedOriginalPrice =
+    selectedVariant?.formattedOriginalPrice || product.formattedOriginalPrice;
 
-  const availableColorsForSize =
-    product.variants
-      .filter((v) => !selectedSize || v.size === selectedSize)
-      .map((v) => v.colorName);
-  const uniqueColors = Array.from(new Set(availableColorsForSize));
+  const sanitizedDescriptionHtml = DOMPurify.sanitize(
+    product.description || product.shortDescription,
+    {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ['style', 'iframe', 'form', 'script', 'object', 'embed'],
+      FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick'],
+    }
+  );
 
   return (
-    <div className="relative overflow-hidden">
-      <div className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-8 pb-20 space-y-8">
+    <div className="relative overflow-x-clip">
+      <div className="relative mx-auto max-w-[1360px] px-4 sm:px-8 pt-10 sm:pt-12 pb-20 space-y-8">
         {/* Navegação / Breadcrumb */}
         <div className="flex items-center justify-between gap-4 text-xs text-[var(--text-muted)]">
           <a
@@ -152,16 +317,16 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
           {/* Galeria Esquerda */}
-          <div className="lg:col-span-7 flex flex-col-reverse sm:flex-row gap-4 lg:sticky lg:top-24">
+          <div className="lg:col-span-7 flex flex-col-reverse sm:flex-row gap-4 lg:sticky lg:top-28">
             {product.images.length > 1 && (
-              <div className="flex sm:flex-col gap-3 shrink-0">
+              <div className="flex sm:flex-col gap-3 shrink-0 overflow-x-auto sm:overflow-visible">
                 {product.images.map((img, idx) => (
                   <button
                     key={`${img}-${idx}`}
                     type="button"
                     onClick={() => setActiveImageIdx(idx)}
                     aria-label={`Ver imagem ${idx + 1} de ${product.name}`}
-                    className={`w-16 h-20 sm:w-20 sm:h-24 rounded-xl overflow-hidden border transition-all bg-[var(--bg-card-media)] ${
+                    className={`w-16 h-20 sm:w-20 sm:h-24 shrink-0 rounded-xl overflow-hidden border transition-all bg-[var(--bg-card-media)] ${
                       activeImageIdx === idx
                         ? 'border-[var(--accent-uv)] shadow-[0_0_14px_var(--accent-uv-glow)]'
                         : 'border-[var(--border-hairline)] opacity-60 hover:opacity-100'
@@ -180,7 +345,7 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
             <div className="relative flex-1 aspect-[3/4] rounded-[26px] overflow-hidden glass-card bg-[var(--bg-card-media)]">
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={product.images[activeImageIdx] ?? product.images[0]}
+                  key={product.images[activeImageIdx] ?? product.images[0] ?? 'placeholder'}
                   initial={{ opacity: 0.2, scale: 1.015 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0.2 }}
@@ -188,8 +353,9 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
                   className="w-full h-full"
                 >
                   <ResilientImage
-                    src={product.images[activeImageIdx] ?? product.images[0]}
+                    src={product.images[activeImageIdx] ?? product.images[0] ?? ''}
                     alt={product.name}
+                    fallbackTitle={product.name}
                     className="w-full h-full object-cover"
                   />
                 </motion.div>
@@ -202,7 +368,7 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
           </div>
 
           {/* Módulo Contíguo de Compra Direita (Tier 3 Glass) */}
-          <div className="lg:col-span-5 glass-surface-strong rounded-[28px] p-6 sm:p-8 space-y-6 lg:sticky lg:top-24">
+          <div className="lg:col-span-5 glass-surface-strong rounded-[28px] p-6 sm:p-8 space-y-6 lg:sticky lg:top-28">
             <div className="space-y-2 border-b border-[var(--border-hairline)] pb-5">
               <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
                 {product.collectionName}
@@ -210,88 +376,102 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
               <h1 className="font-display font-light text-3xl sm:text-4xl uppercase tracking-[0.03em] text-[var(--text-primary)]">
                 {product.name}
               </h1>
-              <p className="text-xl font-medium text-[var(--text-primary)] tabular-nums pt-1">
-                {product.formattedPrice}
-              </p>
+              <div className="flex items-baseline gap-3 tabular-nums pt-1">
+                <span className="text-xl font-medium text-[var(--text-primary)]">
+                  {displayedPrice}
+                </span>
+                {displayedOriginalPrice && (
+                  <span className="text-sm text-[var(--text-muted)] line-through">
+                    {displayedOriginalPrice}
+                  </span>
+                )}
+              </div>
+              {selectedVariant && !selectedVariant.inStock && (
+                <p className="text-xs text-[var(--accent-terracotta)]">
+                  Combinação indisponível no momento.
+                </p>
+              )}
+              {selectedVariant?.inStock &&
+                selectedVariant.trackQuantity &&
+                typeof selectedVariant.stockCount === 'number' &&
+                selectedVariant.stockCount <= 5 && (
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Restam {selectedVariant.stockCount}{' '}
+                    {selectedVariant.stockCount === 1 ? 'unidade' : 'unidades'} nesta variante.
+                  </p>
+                )}
             </div>
 
             <div
               className="wix-description text-sm text-[var(--text-secondary)] leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description || product.shortDescription) }}
+              dangerouslySetInnerHTML={{ __html: sanitizedDescriptionHtml }}
             />
 
-            {/* Seleção de Tamanho */}
-            {availableSizes.length > 0 && availableSizes[0] !== 'Único' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                    Tamanho
-                  </span>
-                  <span className="text-[var(--text-secondary)]">
-                    {selectedSize}
-                  </span>
-                </div>
+            {/* Seletores Dinâmicos de Opções (Tamanho, Cor e demais atributos da Wix) */}
+            {displayOptions.map((option) => {
+              const currentSelection = selectedChoices[option.name] || '';
+              return (
+                <div key={option.name} className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                      {option.name}
+                    </span>
+                    <span className="text-[var(--text-secondary)]">
+                      {option.choices.find((c) => c.value === currentSelection)?.description ||
+                        currentSelection}
+                    </span>
+                  </div>
 
-                <div className="flex flex-wrap gap-2.5" role="radiogroup" aria-label="Selecionar tamanho">
-                  {availableSizes.map((size) => {
-                    const isSelected = selectedSize === size;
-                    const hasStock = product.variants.some((v) => v.size === size && v.inStock);
-                    return (
-                      <button
-                        key={size}
-                        type="button"
-                        role="radio"
-                        aria-checked={isSelected}
-                        onClick={() => setSelectedSize(size as ProductSize)}
-                        className={`min-w-[48px] h-11 px-4 rounded-xl text-xs font-medium transition-all ${
-                          isSelected
-                            ? 'border border-[var(--accent-uv)] bg-[var(--accent-uv-glow)] text-[var(--text-primary)] shadow-[0_0_16px_var(--accent-uv-glow)]'
-                            : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
-                        }`}
-                      >
-                        {size}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                  <div
+                    className="flex flex-wrap gap-2.5"
+                    role="radiogroup"
+                    aria-label={`Selecionar ${option.name}`}
+                  >
+                    {option.choices.map((choice) => {
+                      const isSelected = currentSelection === choice.value;
+                      const syntheticProduct: Product =
+                        product.options && product.options.length > 0
+                          ? product
+                          : { ...product, options: displayOptions };
+                      const hasAnyStock = isOptionChoiceGloballyInStock(
+                        syntheticProduct,
+                        option.name,
+                        choice.value
+                      );
+                      const isCompatibleNow = isOptionChoiceCompatibleWithSelection(
+                        syntheticProduct,
+                        option.name,
+                        choice.value,
+                        selectedChoices
+                      );
+                      const disabled = !hasAnyStock || !choice.visible;
 
-            {/* Seleção de Cor / Acabamento */}
-            {uniqueColors.length > 1 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                    Cor / Acabamento
-                  </span>
-                  <span className="text-[var(--text-secondary)]">
-                    {selectedColor}
-                  </span>
+                      return (
+                        <button
+                          key={choice.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={isSelected}
+                          disabled={disabled}
+                          onClick={() => handleSelectOption(option.name, choice.value)}
+                          className={`min-w-[48px] h-11 px-4 rounded-xl text-xs font-medium transition-all ${
+                            disabled
+                              ? 'border border-[var(--border-hairline)] text-[var(--text-muted)] opacity-35 line-through cursor-not-allowed'
+                              : isSelected
+                                ? 'border border-[var(--accent-uv)] bg-[var(--accent-uv-glow)] text-[var(--text-primary)] shadow-[0_0_16px_var(--accent-uv-glow)]'
+                                : !isCompatibleNow
+                                  ? 'border border-dashed border-[var(--border-hairline)] text-[var(--text-muted)] opacity-70 hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+                                  : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {choice.description || choice.value}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-
-                <div className="flex flex-wrap gap-2.5" role="radiogroup" aria-label="Selecionar cor">
-                  {uniqueColors.map((color) => {
-                    const isSelected = selectedColor === color;
-                    return (
-                      <button
-                        key={color}
-                        type="button"
-                        role="radio"
-                        aria-checked={isSelected}
-                        onClick={() => setSelectedColor(color)}
-                        className={`h-11 px-4 rounded-xl text-xs font-medium transition-all ${
-                          isSelected
-                            ? 'border border-[var(--accent-uv)] bg-[var(--accent-uv-glow)] text-[var(--text-primary)] shadow-[0_0_16px_var(--accent-uv-glow)]'
-                            : 'border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
-                        }`}
-                      >
-                        {color}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              );
+            })}
 
             {/* Quantidade + CTAs */}
             <div className="space-y-3 pt-2">
@@ -300,8 +480,9 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
                   <button
                     type="button"
                     onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    disabled={quantity <= 1}
                     aria-label="Diminuir quantidade"
-                    className="w-8 h-8 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    className="w-8 h-8 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors"
                   >
                     <Minus className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
@@ -310,9 +491,12 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => q + 1)}
+                    onClick={() =>
+                      setQuantity((q) => (maxStock ? Math.min(maxStock, q + 1) : q + 1))
+                    }
+                    disabled={Boolean(maxStock && quantity >= maxStock) || !canPurchase}
                     aria-label="Aumentar quantidade"
-                    className="w-8 h-8 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    className="w-8 h-8 inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
@@ -320,7 +504,7 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
 
                 <UltravioletButton
                   onClick={handleAddToCart}
-                  disabled={!selectedVariant || !selectedVariant.inStock}
+                  disabled={!canPurchase}
                   variant="primary"
                   size="lg"
                   className="flex-1"
@@ -330,6 +514,8 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
                       <Check className="w-4 h-4" aria-hidden="true" />
                       Adicionado ao carrinho
                     </span>
+                  ) : !canPurchase ? (
+                    'INDISPONÍVEL'
                   ) : (
                     'ADICIONAR AO CARRINHO'
                   )}

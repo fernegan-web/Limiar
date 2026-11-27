@@ -1,123 +1,457 @@
-import type { CatalogQuery, Category, Collection, Product, ProductSize } from '../types/commerce';
-import { myWixClient } from './wix/wixClient';
-import { queryWixProducts } from './wix/wixProductsService';
-import type { products, collections } from '@wix/stores';
+import type { collections, products } from '@wix/stores';
+import type {
+  AccentTone,
+  CatalogQuery,
+  Category,
+  Collection,
+  Product,
+  ProductOption,
+  ProductOptionChoice,
+  ProductSize,
+  ProductVariant,
+} from '../types/commerce';
+import { initWixVisitorAuth, myWixClient } from './wix/wixClient';
 
+const CACHE_TTL = 30 * 1000;
+const PAGE_SIZE = 100;
+const ALL_PRODUCTS_COLLECTION_SLUG = 'all-products';
+
+let cachedRawCollections: collections.Collection[] | null = null;
 let cachedProducts: Product[] | null = null;
 let cachedCategories: Category[] | null = null;
 let cachedCollections: Collection[] | null = null;
-let lastFetchTime = 0;
-const CACHE_TTL = 30 * 1000; // 30 seconds cache
+let lastCatalogFetchTime = 0;
+
+let inFlightCatalogLoad: Promise<{
+  products: Product[];
+  categories: Category[];
+  collections: Collection[];
+}> | null = null;
+
+export function invalidateCatalogCache(): void {
+  cachedRawCollections = null;
+  cachedProducts = null;
+  cachedCategories = null;
+  cachedCollections = null;
+  lastCatalogFetchTime = 0;
+}
+
+function formatPriceByCurrency(amount: number, currency = 'BRL'): string {
+  try {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency,
+    }).format(amount);
+  } catch {
+    return `R$ ${amount.toFixed(2).replace('.', ',')}`;
+  }
+}
+
+/**
+ * Remove tags HTML retornadas pela Wix para gerar texto limpo em cards, busca e resumos.
+ */
+export function stripHtmlToPlainText(input: string, maxLength = 150): string {
+  if (!input) return '';
+  const withoutTags = input
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (withoutTags.length <= maxLength) return withoutTags;
+  const sliced = withoutTags.slice(0, maxLength);
+  const lastSpace = sliced.lastIndexOf(' ');
+  return `${(lastSpace > 40 ? sliced.slice(0, lastSpace) : sliced).trim()}…`;
+}
+
+interface LegacyPriceShape {
+  currency?: string | null;
+  price?: number | null;
+  discountedPrice?: number | null;
+  formatted?: {
+    price?: string | null;
+    discountedPrice?: string | null;
+  } | null;
+}
+
+function resolvePriceInfo(
+  priceData?: products.PriceData | null,
+  legacyPrice?: LegacyPriceShape | null
+): {
+  currency: string;
+  price: number;
+  formattedPrice: string;
+  originalPrice?: number;
+  formattedOriginalPrice?: string;
+} {
+  const currency = priceData?.currency || legacyPrice?.currency || 'BRL';
+  const basePrice = priceData?.price ?? legacyPrice?.price ?? 0;
+  const discounted = priceData?.discountedPrice ?? legacyPrice?.discountedPrice;
+  const hasDiscount =
+    typeof discounted === 'number' && discounted > 0 && basePrice > 0 && discounted < basePrice;
+
+  const finalPrice = hasDiscount ? discounted : basePrice;
+  const formattedFinal = hasDiscount
+    ? priceData?.formatted?.discountedPrice ||
+      legacyPrice?.formatted?.discountedPrice ||
+      formatPriceByCurrency(finalPrice, currency)
+    : priceData?.formatted?.price ||
+      legacyPrice?.formatted?.price ||
+      formatPriceByCurrency(finalPrice, currency);
+
+  const formattedOriginal = hasDiscount
+    ? priceData?.formatted?.price ||
+      legacyPrice?.formatted?.price ||
+      formatPriceByCurrency(basePrice, currency)
+    : undefined;
+
+  return {
+    currency,
+    price: finalPrice,
+    formattedPrice: formattedFinal,
+    originalPrice: hasDiscount ? basePrice : undefined,
+    formattedOriginalPrice: formattedOriginal,
+  };
+}
+
+function findOptionValue(
+  choices: Record<string, string> | undefined,
+  patterns: RegExp[]
+): string | undefined {
+  if (!choices) return undefined;
+  for (const [key, value] of Object.entries(choices)) {
+    if (patterns.some((rx) => rx.test(key))) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function normalizeProductSize(raw: string | undefined): ProductSize | string {
+  if (!raw) return 'Único';
+  const trimmed = raw.trim();
+  const upper = trimmed.toUpperCase();
+  if (upper === 'S') return 'P';
+  if (upper === 'L') return 'G';
+  if (upper === 'XL') return 'GG';
+  if (upper === 'XXL') return 'XG';
+  if (['P', 'M', 'G', 'GG', 'XG', 'ÚNICO', 'UNICO'].includes(upper)) {
+    return upper === 'UNICO' ? 'Único' : (upper as ProductSize);
+  }
+  return trimmed;
+}
+
+function collectProductImages(wixProd: products.Product): string[] {
+  const images: string[] = [];
+  const pushUnique = (url?: string | null) => {
+    if (url && typeof url === 'string' && !images.includes(url)) {
+      images.push(url);
+    }
+  };
+
+  pushUnique(wixProd.media?.mainMedia?.image?.url);
+  pushUnique(wixProd.media?.mainMedia?.thumbnail?.url);
+  for (const item of wixProd.media?.items ?? []) {
+    pushUnique(item.image?.url || item.thumbnail?.url);
+  }
+  for (const opt of wixProd.productOptions ?? []) {
+    for (const choice of opt.choices ?? []) {
+      pushUnique(choice.media?.mainMedia?.image?.url);
+      for (const m of choice.media?.items ?? []) {
+        pushUnique(m.image?.url);
+      }
+    }
+  }
+  return images;
+}
+
+function buildOptionMediaIndex(wixProd: products.Product): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const opt of wixProd.productOptions ?? []) {
+    const optName = opt.name || '';
+    for (const choice of opt.choices ?? []) {
+      const choiceVal = choice.description || choice.value || '';
+      const mediaUrl =
+        choice.media?.mainMedia?.image?.url || choice.media?.items?.[0]?.image?.url;
+      if (optName && choiceVal && mediaUrl) {
+        index.set(`${optName}::${choiceVal}`, mediaUrl);
+        if (choice.value) {
+          index.set(`${optName}::${choice.value}`, mediaUrl);
+        }
+      }
+    }
+  }
+  return index;
+}
+
+function extractProductOptions(wixProd: products.Product): ProductOption[] {
+  const options: ProductOption[] = [];
+  for (const opt of wixProd.productOptions ?? []) {
+    const name = opt.name?.trim();
+    if (!name) continue;
+    const seen = new Set<string>();
+    const choices: ProductOptionChoice[] = [];
+    for (const c of opt.choices ?? []) {
+      const label = (c.description || c.value || '').trim();
+      const val = (c.value || c.description || '').trim();
+      if (!val || seen.has(val)) continue;
+      seen.add(val);
+      choices.push({
+        value: val,
+        description: label || val,
+        inStock: c.inStock ?? true,
+        visible: c.visible ?? true,
+        mediaUrl: c.media?.mainMedia?.image?.url || c.media?.items?.[0]?.image?.url,
+      });
+    }
+    if (choices.length > 0) {
+      options.push({
+        name,
+        optionType: String(opt.optionType || 'drop_down'),
+        choices,
+      });
+    }
+  }
+  return options;
+}
 
 /**
  * Mapeia um produto do Wix Stores para o modelo Product da aplicação Limiar.
  */
-export function mapWixProductToAppProduct(wixProd: products.Product): Product {
-  const price = wixProd.priceData?.price ?? wixProd.price?.price ?? 0;
-  const discountedPrice = wixProd.priceData?.discountedPrice ?? price;
-  const finalPrice = discountedPrice > 0 ? discountedPrice : price;
-  const formattedPrice =
-    wixProd.priceData?.formatted?.discountedPrice ||
-    wixProd.priceData?.formatted?.price ||
-    `R$ ${finalPrice.toFixed(2).replace('.', ',')}`;
+export function mapWixProductToAppProduct(
+  wixProd: products.Product,
+  collectionsIndex: Map<string, collections.Collection> = new Map()
+): Product {
+  const productPriceInfo = resolvePriceInfo(wixProd.priceData, wixProd.price);
+  const images = collectProductImages(wixProd);
+  const optionMediaIndex = buildOptionMediaIndex(wixProd);
+  const options = extractProductOptions(wixProd);
+  const manageVariants = Boolean(wixProd.manageVariants);
 
-  const images: string[] = [];
-  const directMain = (wixProd as unknown as { mainMedia?: { image?: { url?: string }; thumbnail?: { url?: string } } }).mainMedia;
-  if (directMain?.image?.url) {
-    images.push(directMain.image.url);
-  } else if (directMain?.thumbnail?.url) {
-    images.push(directMain.thumbnail.url);
-  }
-
-  if (wixProd.media?.mainMedia?.image?.url) {
-    images.push(wixProd.media.mainMedia.image.url);
-  }
-  if (wixProd.media?.mainMedia?.thumbnail?.url) {
-    images.push(wixProd.media.mainMedia.thumbnail.url);
-  }
-  if (wixProd.media?.items) {
-    wixProd.media.items.forEach((item) => {
-      if (item.image?.url && !images.includes(item.image.url)) {
-        images.push(item.image.url);
-      }
-    });
-  }
-  if (images.length === 0) {
-    images.push('https://static.wixstatic.com/media/32314a_2e526d7c1fd342b18376cd518a9b8c9a~mv2.webp');
-  }
-
-  const variants =
+  const variants: ProductVariant[] =
     wixProd.variants && wixProd.variants.length > 0
-      ? wixProd.variants.map((v, i) => {
-          const sizeChoice =
-            v.choices?.['Tamanho'] || v.choices?.['Size'] || v.choices?.['Size/Tamanho'] || 'Único';
-          const colorChoice = v.choices?.['Cor'] || v.choices?.['Color'] || 'Padrão';
-          return {
-            id: v._id || `var-${i}`,
-            size: (['P', 'M', 'G', 'GG', 'XG', 'Único'].includes(sizeChoice)
-              ? sizeChoice
-              : 'Único') as ProductSize,
-            colorName: colorChoice,
-            colorHex: '#141516',
-            inStock: v.stock?.inStock ?? true,
-            stockCount: v.stock?.quantity ?? undefined,
-            sku: v.variant?.sku || undefined,
-          };
-        })
+      ? wixProd.variants
+          .filter((v) => v.variant?.visible !== false)
+          .map((v, i) => {
+            const rawChoices = { ...(v.choices ?? {}) };
+            const sizeRaw = findOptionValue(rawChoices, [/tamanh/i, /size/i, /medid/i]);
+            const colorRaw = findOptionValue(rawChoices, [/cor/i, /color/i, /acabament/i]);
+            const variantPriceInfo = resolvePriceInfo(
+              v.variant?.priceData ?? wixProd.priceData,
+              wixProd.price
+            );
+
+            let variantImage: string | undefined;
+            for (const [optKey, optVal] of Object.entries(rawChoices)) {
+              const found = optionMediaIndex.get(`${optKey}::${optVal}`);
+              if (found) {
+                variantImage = found;
+                break;
+              }
+            }
+
+            const trackQuantity = Boolean(v.stock?.trackQuantity);
+            const stockCount =
+              typeof v.stock?.quantity === 'number' ? v.stock.quantity : undefined;
+            const inStock =
+              (v.stock?.inStock ?? true) && (!trackQuantity || (stockCount ?? 0) > 0);
+
+            return {
+              id: v._id || `${wixProd._id}-var-${i}`,
+              size: normalizeProductSize(sizeRaw),
+              colorName: colorRaw?.trim() || 'Padrão',
+              colorHex: '#141516',
+              choices: rawChoices,
+              price: variantPriceInfo.price,
+              formattedPrice: variantPriceInfo.formattedPrice,
+              originalPrice: variantPriceInfo.originalPrice,
+              formattedOriginalPrice: variantPriceInfo.formattedOriginalPrice,
+              imageUrl: variantImage,
+              inStock,
+              trackQuantity,
+              stockCount,
+              sku: v.variant?.sku || undefined,
+            };
+          })
       : [
           {
             id: `${wixProd._id}-default`,
-            size: 'Único' as ProductSize,
+            size: 'Único',
             colorName: 'Padrão',
             colorHex: '#141516',
-            inStock: wixProd.stock?.inStock ?? true,
-            stockCount: wixProd.stock?.quantity ?? undefined,
+            choices: {},
+            price: productPriceInfo.price,
+            formattedPrice: productPriceInfo.formattedPrice,
+            originalPrice: productPriceInfo.originalPrice,
+            formattedOriginalPrice: productPriceInfo.formattedOriginalPrice,
+            imageUrl: images[0],
+            inStock:
+              (wixProd.stock?.inStock ?? true) &&
+              (!wixProd.stock?.trackInventory || (wixProd.stock?.quantity ?? 0) > 0),
+            trackQuantity: Boolean(wixProd.stock?.trackInventory),
+            stockCount:
+              typeof wixProd.stock?.quantity === 'number' ? wixProd.stock.quantity : undefined,
             sku: wixProd.sku || undefined,
           },
         ];
 
-  const availableSizes = Array.from(new Set(variants.map((v) => v.size)));
+  const availableSizes = Array.from(new Set(variants.map((v) => String(v.size))));
   const availableColors = Array.from(new Set(variants.map((v) => v.colorName)));
 
-  const collectionIds = wixProd.collectionIds || [];
-  const isFeatured = collectionIds.some(
-    (id: string) => id === '91a9bf1f-3b5f-4d4d-bbdb-a31c08cccb9a' || id === 'd92151df-e4cc-4b00-98a6-41859f8804f5'
-  );
+  const collectionIds = (wixProd.collectionIds ?? []).filter(Boolean);
+  const resolvedCollections = collectionIds
+    .map((id) => collectionsIndex.get(id))
+    .filter((c): c is collections.Collection => Boolean(c));
+  const collectionSlugs = resolvedCollections
+    .map((c) => c.slug || '')
+    .filter(Boolean);
 
-  let descText = '';
-  if (typeof wixProd.description === 'string') {
-    descText = wixProd.description;
-  } else if (wixProd.description && typeof wixProd.description === 'object') {
-    descText = JSON.stringify(wixProd.description);
-  }
+  const primaryCollection =
+    resolvedCollections.find((c) => c.slug !== ALL_PRODUCTS_COLLECTION_SLUG) ||
+    resolvedCollections[0];
+
+  const isFeatured =
+    collectionSlugs.some((slug) => slug === 'destaque' || slug === 'mais-vendidos') ||
+    collectionIds.some(
+      (id) =>
+        id === 'd92151df-e4cc-4b00-98a6-41859f8804f5' ||
+        id === '91a9bf1f-3b5f-4d4d-bbdb-a31c08cccb9a'
+    );
+
+  const rawDescription = typeof wixProd.description === 'string' ? wixProd.description : '';
+  const plainSummary = stripHtmlToPlainText(rawDescription, 140);
+  const productInStock = variants.some((v) => v.inStock);
 
   return {
     id: wixProd._id || '',
     slug: wixProd.slug || wixProd._id || '',
     name: wixProd.name || 'Produto Limiar',
-    price: finalPrice,
-    currency: 'BRL',
-    formattedPrice,
-    categoryId: collectionIds[0] || 'geral',
-    categoryName: 'Streetwear',
-    collectionSlug: collectionIds[0] || 'all-products',
-    collectionName: 'Coleção Limiar',
-    shortDescription: descText
-      ? descText.slice(0, 120)
-      : 'Peça autoral com acabamento premium e direção visual Organic Dark Tech.',
+    price: productPriceInfo.price,
+    currency: productPriceInfo.currency,
+    formattedPrice: productPriceInfo.formattedPrice,
+    originalPrice: productPriceInfo.originalPrice,
+    formattedOriginalPrice: productPriceInfo.formattedOriginalPrice,
+    categoryId: primaryCollection?._id || collectionIds[0] || 'all-products',
+    categoryName: primaryCollection?.name || 'Catálogo',
+    collectionSlug: primaryCollection?.slug || collectionSlugs[0] || ALL_PRODUCTS_COLLECTION_SLUG,
+    collectionName: primaryCollection?.name || 'Coleção Limiar',
+    collectionIds,
+    collectionSlugs,
+    shortDescription:
+      plainSummary || 'Peça autoral com acabamento premium e direção visual Organic Dark Tech.',
     description:
-      descText || 'Peça autoral desenvolvida entre a intersecção da cultura underground, darkpsy e streetwear.',
-    composition: '100% Algodão Penteado Heavyweight (280g/m²)',
+      rawDescription ||
+      'Peça autoral desenvolvida entre a intersecção da cultura underground, darkpsy e streetwear.',
+    composition: 'Confira a descrição completa da peça para especificações de tecido e gramatura.',
     careInstructions: 'Lavar à mão ou ciclo delicado. Não alvejar. Secar à sombra.',
-    accentTone: 'uv',
+    accentTone: isFeatured ? 'uv' : 'acid',
     statusTag: isFeatured ? 'DESTAQUE' : undefined,
     images,
+    options,
     variants,
+    manageVariants,
     availableSizes,
     availableColors,
+    inStock: productInStock,
     featured: isFeatured,
     isDemoData: false,
   };
+}
+
+/**
+ * Seleciona a melhor variante correspondente a um mapa de opções escolhidas.
+ */
+export function resolveProductVariant(
+  product: Product,
+  selectedChoices: Record<string, string>
+): ProductVariant | null {
+  const options = product.options ?? [];
+  if (options.length === 0 || product.variants.length <= 1) {
+    return product.variants[0] ?? null;
+  }
+
+  const exact = product.variants.find((variant) =>
+    options.every((opt) => {
+      const chosen = selectedChoices[opt.name];
+      if (!chosen) return false;
+      const variantChoice = variant.choices?.[opt.name];
+      return variantChoice === chosen;
+    })
+  );
+
+  return exact ?? null;
+}
+
+/**
+ * Verifica se uma escolha de opção possui ao menos uma variante em estoque.
+ */
+export function isOptionChoiceGloballyInStock(
+  product: Product,
+  optionName: string,
+  choiceValue: string
+): boolean {
+  if (product.variants.length === 0) return false;
+  return product.variants.some(
+    (v) => v.inStock && v.choices?.[optionName] === choiceValue
+  );
+}
+
+/**
+ * Verifica se uma escolha combina em estoque com as demais seleções atuais.
+ */
+export function isOptionChoiceCompatibleWithSelection(
+  product: Product,
+  optionName: string,
+  choiceValue: string,
+  selectedChoices: Record<string, string>
+): boolean {
+  const options = product.options ?? [];
+  return product.variants.some((v) => {
+    if (!v.inStock || v.choices?.[optionName] !== choiceValue) return false;
+    return options.every((opt) => {
+      if (opt.name === optionName) return true;
+      const current = selectedChoices[opt.name];
+      return !current || v.choices?.[opt.name] === current;
+    });
+  });
+}
+
+/**
+ * Ao selecionar uma opção incompatível com a seleção secundária atual,
+ * reconcilia outras opções para a primeira variante em estoque disponível.
+ */
+export function selectProductOptionWithReconciliation(
+  product: Product,
+  currentChoices: Record<string, string>,
+  optionName: string,
+  choiceValue: string
+): Record<string, string> {
+  const next: Record<string, string> = {
+    ...currentChoices,
+    [optionName]: choiceValue,
+  };
+
+  const exact = resolveProductVariant(product, next);
+  if (exact && exact.inStock) {
+    return next;
+  }
+
+  const compatibleInStock =
+    product.variants.find((v) => v.inStock && v.choices?.[optionName] === choiceValue) ||
+    product.variants.find((v) => v.choices?.[optionName] === choiceValue);
+
+  if (compatibleInStock?.choices) {
+    return { ...compatibleInStock.choices };
+  }
+
+  return next;
 }
 
 /**
@@ -127,18 +461,36 @@ export function filterAndSortProducts(productsList: Product[], query: CatalogQue
   let result = [...productsList];
 
   if (query.category && query.category !== 'todas') {
+    const target = query.category.toLowerCase();
     result = result.filter(
-      (p) => p.categoryId === query.category || p.categoryName.toLowerCase() === query.category?.toLowerCase()
+      (p) =>
+        p.categoryId === query.category ||
+        Boolean(p.collectionIds?.includes(query.category || '')) ||
+        Boolean(p.collectionSlugs?.some((s) => s.toLowerCase() === target)) ||
+        p.categoryName.toLowerCase() === target
     );
   }
 
   if (query.collection && query.collection !== 'todas') {
-    result = result.filter((p) => p.collectionSlug === query.collection);
+    const target = query.collection.toLowerCase();
+    result = result.filter(
+      (p) =>
+        p.collectionSlug.toLowerCase() === target ||
+        Boolean(p.collectionSlugs?.some((s) => s.toLowerCase() === target)) ||
+        Boolean(p.collectionIds?.includes(query.collection || ''))
+    );
   }
 
   if (query.size) {
+    const targetSize = query.size.toUpperCase();
     result = result.filter((p) =>
-      p.variants.some((variant) => variant.size === query.size && variant.inStock)
+      p.variants.some((variant) => {
+        if (!variant.inStock) return false;
+        if (String(variant.size).toUpperCase() === targetSize) return true;
+        return Object.values(variant.choices ?? {}).some(
+          (val) => val.trim().toUpperCase() === targetSize
+        );
+      })
     );
   }
 
@@ -172,19 +524,166 @@ export function filterAndSortProducts(productsList: Product[], query: CatalogQue
   return result;
 }
 
-/**
- * Busca produtos do Wix Stores com cache e tratamento de erros.
- * Nenhuma rota de fallback com produtos fictícios é utilizada em caso de falha.
- */
-export async function fetchProducts(query: CatalogQuery = {}): Promise<Product[]> {
+async function fetchAllWixCollections(): Promise<collections.Collection[]> {
+  const all: collections.Collection[] = [];
+  let page = await myWixClient.collections.queryCollections().limit(PAGE_SIZE).find();
+  all.push(...page.items);
+  while (page.hasNext()) {
+    page = await page.next();
+    all.push(...page.items);
+  }
+  return all;
+}
+
+async function fetchAllWixProducts(): Promise<products.Product[]> {
+  const all: products.Product[] = [];
+  let page = await myWixClient.products.queryProducts().limit(PAGE_SIZE).find();
+  all.push(...page.items);
+  while (page.hasNext()) {
+    page = await page.next();
+    all.push(...page.items);
+  }
+  return all;
+}
+
+export function buildCatalogCollectionsAndCategories(
+  rawCollections: collections.Collection[],
+  mappedProducts: Product[]
+): { categories: Category[]; collections: Collection[] } {
+  const visibleCollections = rawCollections.filter(
+    (c) => (c.slug || '') !== ALL_PRODUCTS_COLLECTION_SLUG
+  );
+  const sourceCollections =
+    visibleCollections.length > 0 ? visibleCollections : rawCollections;
+
+  const categories: Category[] = sourceCollections.map((c) => {
+    const colId = c._id || '';
+    const countFromProducts = mappedProducts.filter(
+      (p) => p.collectionIds?.includes(colId) || p.categoryId === colId
+    ).length;
+
+    return {
+      id: colId,
+      slug: c.slug || colId,
+      name: c.name || 'Categoria',
+      description: c.description || '',
+      productCount:
+        typeof c.numberOfProducts === 'number' && c.numberOfProducts >= 0
+          ? c.numberOfProducts
+          : countFromProducts,
+      isDemoData: false,
+    };
+  });
+
+  const mappedCollections: Collection[] = sourceCollections.map((c, index) => {
+    const colId = c._id || '';
+    const colMediaUrl =
+      c.media?.mainMedia?.image?.url ||
+      c.media?.items?.[0]?.image?.url ||
+      mappedProducts.find(
+        (p) => (p.collectionIds?.includes(colId) || p.categoryId === colId) && p.images[0]
+      )?.images[0] ||
+      mappedProducts.find((p) => p.images[0])?.images[0] ||
+      '';
+
+    const countFromProducts = mappedProducts.filter(
+      (p) => p.collectionIds?.includes(colId) || p.categoryId === colId
+    ).length;
+    const count =
+      typeof c.numberOfProducts === 'number' && c.numberOfProducts >= 0
+        ? c.numberOfProducts
+        : countFromProducts;
+
+    const tone: AccentTone = index % 2 === 0 ? 'uv' : 'acid';
+
+    return {
+      id: colId,
+      slug: c.slug || colId,
+      name: c.name || 'Coleção',
+      subtitle: `${count} ${count === 1 ? 'peça' : 'peças'}`,
+      description:
+        stripHtmlToPlainText(c.description || '', 150) ||
+        'Curadoria oficial conectada ao catálogo Limiar.',
+      image: colMediaUrl,
+      productCount: count,
+      accentTone: tone,
+      isDemoData: false,
+    };
+  });
+
+  return { categories, collections: mappedCollections };
+}
+
+async function loadCatalogSnapshot(): Promise<{
+  products: Product[];
+  categories: Category[];
+  collections: Collection[];
+}> {
   const now = Date.now();
-  if (!cachedProducts || now - lastFetchTime > CACHE_TTL) {
-    const result = await queryWixProducts({ limit: 100 });
-    cachedProducts = result.items.map(mapWixProductToAppProduct);
-    lastFetchTime = now;
+  if (
+    cachedProducts &&
+    cachedCategories &&
+    cachedCollections &&
+    cachedRawCollections &&
+    now - lastCatalogFetchTime < CACHE_TTL
+  ) {
+    return {
+      products: cachedProducts,
+      categories: cachedCategories,
+      collections: cachedCollections,
+    };
   }
 
-  return filterAndSortProducts(cachedProducts, query);
+  if (inFlightCatalogLoad) {
+    return inFlightCatalogLoad;
+  }
+
+  inFlightCatalogLoad = (async () => {
+    try {
+      await initWixVisitorAuth();
+
+      const [rawCollections, rawProducts] = await Promise.all([
+        fetchAllWixCollections(),
+        fetchAllWixProducts(),
+      ]);
+
+      const collectionsById = new Map<string, collections.Collection>();
+      for (const col of rawCollections) {
+        if (col._id) collectionsById.set(col._id, col);
+      }
+
+      const mappedProducts = rawProducts.map((p) =>
+        mapWixProductToAppProduct(p, collectionsById)
+      );
+      const { categories, collections: mappedCollections } =
+        buildCatalogCollectionsAndCategories(rawCollections, mappedProducts);
+
+      cachedRawCollections = rawCollections;
+      cachedProducts = mappedProducts;
+      cachedCategories = categories;
+      cachedCollections = mappedCollections;
+      lastCatalogFetchTime = Date.now();
+
+      return {
+        products: mappedProducts,
+        categories,
+        collections: mappedCollections,
+      };
+    } finally {
+      inFlightCatalogLoad = null;
+    }
+  })();
+
+  return inFlightCatalogLoad;
+}
+
+/**
+ * Busca produtos do Wix Stores com paginação completa, cache e deduplicação de requisições.
+ * Nenhum fallback com dados fictícios é utilizado em caso de falha.
+ */
+export async function fetchProducts(query: CatalogQuery = {}): Promise<Product[]> {
+  const snapshot = await loadCatalogSnapshot();
+  return filterAndSortProducts(snapshot.products, query);
 }
 
 export async function fetchFeaturedProducts(): Promise<Product[]> {
@@ -194,46 +693,16 @@ export async function fetchFeaturedProducts(): Promise<Product[]> {
 }
 
 export async function fetchProductBySlug(slug: string): Promise<Product | null> {
-  const productsList = await fetchProducts();
-  return productsList.find((p) => p.slug === slug || p.id === slug) ?? null;
+  const snapshot = await loadCatalogSnapshot();
+  return snapshot.products.find((p) => p.slug === slug || p.id === slug) ?? null;
 }
 
 export async function fetchCategories(): Promise<Category[]> {
-  if (cachedCategories) return cachedCategories;
-  try {
-    const res = await myWixClient.collections.queryCollections().find();
-    cachedCategories = res.items.map((c: collections.Collection) => ({
-      id: c._id || '',
-      slug: c.slug || '',
-      name: c.name || '',
-      description: c.description || '',
-      productCount: 10,
-      isDemoData: false,
-    }));
-    return cachedCategories;
-  } catch (err) {
-    console.error('[CatalogService] Erro ao buscar categorias do Wix:', err);
-    return [];
-  }
+  const snapshot = await loadCatalogSnapshot();
+  return snapshot.categories;
 }
 
 export async function fetchCollections(): Promise<Collection[]> {
-  if (cachedCollections) return cachedCollections;
-  try {
-    const res = await myWixClient.collections.queryCollections().find();
-    cachedCollections = res.items.map((c: collections.Collection, i: number) => ({
-      id: c._id || '',
-      slug: c.slug || '',
-      name: c.name || '',
-      subtitle: 'Coleção Oficial',
-      description: c.description || 'Curadoria exclusiva Limiar Stores.',
-      image: i % 2 === 0 ? 'https://static.wixstatic.com/media/32314a_2e526d7c1fd342b18376cd518a9b8c9a~mv2.webp' : 'https://static.wixstatic.com/media/32314a_ec0ab79839da4a37b58bf5cd8f6a0087~mv2.webp',
-      accentTone: (i % 2 === 0 ? 'uv' : 'acid') as any,
-      isDemoData: false,
-    }));
-    return cachedCollections;
-  } catch (err) {
-    console.error('[CatalogService] Erro ao buscar coleções do Wix:', err);
-    return [];
-  }
+  const snapshot = await loadCatalogSnapshot();
+  return snapshot.collections;
 }

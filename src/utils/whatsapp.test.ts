@@ -38,6 +38,21 @@ test('buildProductWhatsAppMessage includes product name, selected variant, and l
   assert.ok(withVariant.includes('Tribal Tee (Tam. G · Preto Estonado)'));
   assert.ok(withVariant.includes('https://limiarritual.com/produto/tribal-tee'));
 
+  const withQtyOne = buildProductWhatsAppMessage({
+    productName: 'Tribal Tee',
+    variantLabel: 'Tam. G',
+    quantity: 1,
+  });
+  assert.ok(withQtyOne.includes('Tribal Tee (Tam. G)'));
+  assert.equal(withQtyOne.includes('1x '), false);
+
+  const withQtyThree = buildProductWhatsAppMessage({
+    productName: 'Tribal Tee',
+    variantLabel: 'Tam. G',
+    quantity: 3,
+  });
+  assert.ok(withQtyThree.includes('3x Tribal Tee (Tam. G)'));
+
   const encoded = buildProductWhatsAppUrl({
     productName: 'Void Hoodie',
     variantLabel: 'Tam. M',

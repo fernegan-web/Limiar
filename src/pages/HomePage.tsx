@@ -18,15 +18,13 @@ import { useRouter } from '../context/RouterContext';
 import { scrollToWithPhysics } from '../motion/scrollPhysics';
 import { ThresholdScrollParallax } from '../motion/ThresholdPrimitives';
 import {
-  DEMO_CATEGORIES,
-  DEMO_COLLECTIONS,
   DEMO_IMAGES,
-  DEMO_PRODUCTS,
 } from '../data/demoCatalog';
 import {
   fetchCategories,
   fetchCollections,
   fetchFeaturedProducts,
+  invalidateCatalogCache,
 } from '../services/catalogService';
 import type { Category, Collection, Product } from '../types/commerce';
 import { validateEmail } from '../utils/validation';
@@ -58,11 +56,11 @@ const HERO_SLIDES: HeroSlide[] = [
 
 export function HomePage() {
   const { navigate } = useRouter();
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>(() =>
-    DEMO_PRODUCTS.filter((p) => p.featured)
-  );
-  const [categories, setCategories] = useState<Category[]>(() => DEMO_CATEGORIES);
-  const [collections, setCollections] = useState<Collection[]>(() => DEMO_COLLECTIONS);
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [activeSlideIndex] = useState(0);
 
   // Newsletter state
@@ -70,22 +68,31 @@ export function HomePage() {
   const [newsletterError, setNewsletterError] = useState<string | null>(null);
   const [newsletterNotice, setNewsletterNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    Promise.all([
-      fetchFeaturedProducts(),
-      fetchCategories(),
-      fetchCollections(),
-    ]).then(([products, cats, cols]) => {
-      if (!mounted) return;
+  const loadHomeCatalog = useCallback(async (forceRefresh = false) => {
+    setCatalogLoading(true);
+    setCatalogError(null);
+    if (forceRefresh) {
+      invalidateCatalogCache();
+    }
+    try {
+      const [products, cats, cols] = await Promise.all([
+        fetchFeaturedProducts(),
+        fetchCategories(),
+        fetchCollections(),
+      ]);
       setFeaturedProducts(products);
       setCategories(cats);
       setCollections(cols);
-    });
-    return () => {
-      mounted = false;
-    };
+    } catch {
+      setCatalogError('Não foi possível carregar o catálogo oficial no momento.');
+    } finally {
+      setCatalogLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadHomeCatalog();
+  }, [loadHomeCatalog]);
 
   const currentSlide = HERO_SLIDES[activeSlideIndex];
 
@@ -149,20 +156,55 @@ export function HomePage() {
           </div>
         </CinematicScrollReveal>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
-          {featuredProducts.map((product, index) => (
-            <CinematicScrollReveal
-              key={product.id}
-              staggerIndex={index}
-              staggerStep={0.1}
-              startY={40}
-              startScale={0.93}
-              startBlur={10}
+        {catalogError ? (
+          <div
+            role="alert"
+            className="glass-surface rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          >
+            <p className="text-sm text-[var(--accent-terracotta)]">{catalogError}</p>
+            <button
+              type="button"
+              onClick={() => loadHomeCatalog(true)}
+              className="px-4 py-2 rounded-full border border-[var(--border-strong)] text-xs uppercase tracking-[0.14em] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
             >
-              <ProductCard product={product} />
-            </CinematicScrollReveal>
-          ))}
-        </div>
+              Tentar novamente
+            </button>
+          </div>
+        ) : catalogLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6" aria-busy="true">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="glass-card rounded-[22px] p-3.5 space-y-4 animate-pulse"
+              >
+                <div className="aspect-[3/4] w-full rounded-[15px] bg-[var(--bg-card-media)]" />
+                <div className="space-y-2 px-1">
+                  <div className="h-3 w-20 rounded bg-[var(--border-hairline)]" />
+                  <div className="h-4 w-32 rounded bg-[var(--border-hairline)]" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : featuredProducts.length === 0 ? (
+          <div className="glass-surface rounded-2xl p-8 text-center text-sm text-[var(--text-muted)]">
+            Nenhuma peça disponível no catálogo no momento.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
+            {featuredProducts.map((product, index) => (
+              <CinematicScrollReveal
+                key={product.id}
+                staggerIndex={index}
+                staggerStep={0.1}
+                startY={40}
+                startScale={0.93}
+                startBlur={10}
+              >
+                <ProductCard product={product} />
+              </CinematicScrollReveal>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 3. NAVEGAÇÃO POR CATEGORIAS */}

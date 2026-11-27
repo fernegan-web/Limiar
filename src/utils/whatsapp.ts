@@ -24,17 +24,22 @@ export function buildContactWhatsAppUrl(customMessage?: string): string {
 export interface ProductWhatsAppParams {
   productName: string;
   variantLabel?: string;
+  quantity?: number;
   productUrl?: string;
 }
 
 export function buildProductWhatsAppMessage({
   productName,
   variantLabel,
+  quantity,
   productUrl,
 }: ProductWhatsAppParams): string {
   const cleanName = productName.trim();
   const cleanVariant = variantLabel?.trim();
-  const itemDescriptor = cleanVariant ? `${cleanName} (${cleanVariant})` : cleanName;
+  const qtyPrefix = typeof quantity === 'number' && quantity > 1 ? `${quantity}x ` : '';
+  const itemDescriptor = cleanVariant
+    ? `${qtyPrefix}${cleanName} (${cleanVariant})`
+    : `${qtyPrefix}${cleanName}`;
   const baseText = `Olá, Limiar! Tenho interesse nesta peça: ${itemDescriptor}. Gostaria de saber mais sobre ela.`;
 
   if (productUrl && productUrl.trim()) {

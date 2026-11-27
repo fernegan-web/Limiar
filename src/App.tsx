@@ -5,6 +5,7 @@ import { PortalIntroOverlay } from './components/intro/PortalIntroOverlay';
 import { NeotribalGlobalBackground } from './components/ornaments/NeotribalGlobalBackground';
 import { OrbitalCursor } from './components/ui/OrbitalCursor';
 import { WhatsAppFloatingButton } from './components/ui/WhatsAppFloatingButton';
+import { AuthProvider } from './context/AuthContext';
 import { CartProvider, useCart } from './context/CartContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -31,6 +32,9 @@ const ContactPage = lazy(() =>
 const ProductDetailPage = lazy(() =>
   import('./pages/ProductDetailPage').then((m) => ({ default: m.ProductDetailPage }))
 );
+const AuthCallbackPage = lazy(() =>
+  import('./pages/AuthCallbackPage').then((m) => ({ default: m.AuthCallbackPage }))
+);
 const CartDrawer = lazy(() =>
   import('./components/commerce/CartDrawer').then((m) => ({ default: m.CartDrawer }))
 );
@@ -44,12 +48,20 @@ const AccountModal = lazy(() =>
 function AppShell() {
   const { pathname, commitScroll } = useRouter();
   const { markPortalRevealed } = useThresholdPointer();
-  const { isDrawerOpen, items } = useCart();
+  const { isDrawerOpen, items, checkoutReturnNotice, clearCheckoutReturnNotice } = useCart();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMounted, setSearchMounted] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountMounted, setAccountMounted] = useState(false);
-  const [introActive, setIntroActive] = useState(true);
+  const isCallbackPath =
+    typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
+  const [introActive, setIntroActive] = useState(!isCallbackPath);
+
+  useEffect(() => {
+    if (isCallbackPath) {
+      markPortalRevealed();
+    }
+  }, [isCallbackPath, markPortalRevealed]);
 
   const shouldMountCart = isDrawerOpen || items.length > 0;
 
@@ -62,8 +74,9 @@ function AppShell() {
     };
   }, [searchOpen, accountOpen, isDrawerOpen]);
 
-  // Validação e log da conexão real com o backend Wix Stores (Wix Headless)
+  // Validação e log da conexão real com o backend Wix Stores (apenas em desenvolvimento)
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     validateAndLogWixCatalogConnection().catch((err) => {
       console.warn('[Wix Headless] Validação de catálogo:', err);
     });
@@ -76,6 +89,7 @@ function AppShell() {
       pathname !== '/colecoes' &&
       pathname !== '/sobre' &&
       pathname !== '/contato' &&
+      pathname !== '/auth/callback' &&
       !pathname.startsWith('/produto/'));
 
   const renderPage = () => {
@@ -93,6 +107,9 @@ function AppShell() {
     }
     if (pathname === '/contato') {
       return <ContactPage />;
+    }
+    if (pathname === '/auth/callback') {
+      return <AuthCallbackPage />;
     }
     if (pathname.startsWith('/produto/')) {
       const slug = pathname.replace('/produto/', '').split('/')[0];
@@ -120,6 +137,26 @@ function AppShell() {
           setAccountOpen(true);
         }}
       />
+
+      {checkoutReturnNotice?.handled && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-[60] glass-surface-strong rounded-2xl border border-[var(--border-strong)] p-4 shadow-xl flex items-start justify-between gap-3"
+        >
+          <p className="text-xs leading-relaxed text-[var(--text-primary)]">
+            {checkoutReturnNotice.message}
+          </p>
+          <button
+            type="button"
+            onClick={clearCheckoutReturnNotice}
+            aria-label="Fechar aviso de retorno do checkout"
+            className="shrink-0 text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            Fechar
+          </button>
+        </div>
+      )}
 
       <main className="relative z-10 flex-1">
         <PortalRouteTransition routeKey={pathname || '/'} onTransitionScroll={commitScroll}>
@@ -164,9 +201,11 @@ export default function App() {
     <ThemeProvider>
       <ThresholdMotionProvider>
         <RouterProvider>
-          <CartProvider>
-            <AppShell />
-          </CartProvider>
+          <AuthProvider>
+            <CartProvider>
+              <AppShell />
+            </CartProvider>
+          </AuthProvider>
         </RouterProvider>
       </ThresholdMotionProvider>
     </ThemeProvider>

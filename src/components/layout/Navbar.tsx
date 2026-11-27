@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Menu, Moon, Search, ShoppingBag, Sun, User, X } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useRouter } from '../../context/RouterContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -22,6 +23,7 @@ const NAV_LINKS = [
 export function Navbar({ onOpenSearch, onOpenAccount }: NavbarProps) {
   const { pathname, navigate } = useRouter();
   const { theme, toggleTheme } = useTheme();
+  const { isAuthenticated, member } = useAuth();
   const { totalItems, openDrawer } = useCart();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -95,10 +97,17 @@ export function Navbar({ onOpenSearch, onOpenAccount }: NavbarProps) {
               type="button"
               whileTap={{ scale: 0.92 }}
               onClick={onOpenAccount}
-              aria-label="Acessar conta"
-              className="hidden sm:inline-flex items-center justify-center w-9 h-9 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+              aria-label={isAuthenticated ? `Minha conta (${member?.name || 'conectada'})` : 'Acessar conta'}
+              title={isAuthenticated ? member?.name || 'Minha conta' : 'Acessar conta'}
+              className="relative hidden sm:inline-flex items-center justify-center w-9 h-9 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
             >
               <User className="w-4 h-4" aria-hidden="true" />
+              {isAuthenticated && (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[var(--accent-acid)]"
+                />
+              )}
             </motion.button>
 
             <motion.button
