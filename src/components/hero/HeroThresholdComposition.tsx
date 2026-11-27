@@ -19,6 +19,7 @@ interface HeroThresholdCompositionProps {
   modelAlt: string;
   progressMv?: MotionValue<number>;
   collapseRefs?: HeroCollapseRefs;
+  isCssDriven?: boolean;
 }
 
 /**
@@ -34,6 +35,7 @@ export function HeroThresholdComposition({
   modelAlt,
   progressMv,
   collapseRefs,
+  isCssDriven = false,
 }: HeroThresholdCompositionProps) {
   const { nx, ny, portalRevealed } = useThresholdPointer();
   const shouldPlayEntrance = portalRevealed;
@@ -140,7 +142,9 @@ export function HeroThresholdComposition({
           >
             <div
               ref={collapseRefs?.wreathRotateRef}
-              className="w-full h-full md:will-change-transform origin-center"
+              className={`w-full h-full md:will-change-transform origin-center ${
+                isCssDriven ? 'limiar-wreath-spin-mobile' : ''
+              }`}
             >
               <motion.div
                 initial={{ opacity: 0, scale: 0.96 }}

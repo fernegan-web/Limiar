@@ -9,6 +9,7 @@ import {
   isNativeScrollOnly,
   setLenisInstance,
   shouldAcceptMobileViewportHeightUpdate,
+  supportsCssScrollTimeline,
 } from './scrollPhysics';
 
 test('isNativeScrollOnly isolates mobile and touch devices while preserving Desktop', () => {
@@ -179,4 +180,36 @@ test('mobile traversal progress maps 1:1 to real scrollY, clamps at spatial limi
   assert.ok(
     Math.abs(computeDeterministicTraversalProgress(spanPx * 0.45, spanPx) - 0.45) < 1e-6
   );
+});
+
+test('supportsCssScrollTimeline detects browser capability accurately', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const originalCSS = (globalThis as { CSS?: unknown }).CSS;
+
+  try {
+    // Ambientes sem CSS ou sem window retornam false com segurança
+    (globalThis as { window?: unknown }).window = undefined;
+    (globalThis as { CSS?: unknown }).CSS = undefined;
+    assert.equal(supportsCssScrollTimeline(), false);
+
+    // Navegador antigo sem suporte a scroll-driven animations
+    (globalThis as { window?: unknown }).window = {};
+    (globalThis as { CSS?: unknown }).CSS = {
+      supports: (prop: string, val: string) => false,
+    };
+    assert.equal(supportsCssScrollTimeline(), false);
+
+    // Navegador moderno compatível com view() e timeline-scope (Chrome 115+)
+    (globalThis as { CSS?: unknown }).CSS = {
+      supports: (prop: string, val: string) => {
+        if (prop === 'animation-timeline' && val === 'view()') return true;
+        if (prop === 'timeline-scope' && val === '--test') return true;
+        return false;
+      },
+    };
+    assert.equal(supportsCssScrollTimeline(), true);
+  } finally {
+    (globalThis as { window?: unknown }).window = originalWindow;
+    (globalThis as { CSS?: unknown }).CSS = originalCSS;
+  }
 });

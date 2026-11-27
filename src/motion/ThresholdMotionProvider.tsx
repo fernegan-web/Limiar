@@ -12,6 +12,7 @@ import {
   isNativeScrollOnly,
   notifyPhysicsScroll,
   setLenisInstance,
+  supportsCssScrollDrivenAnimations,
 } from './scrollPhysics';
 import { THRESHOLD_SPRING, computeNormalizedPointer } from './thresholdConfig';
 
@@ -301,6 +302,19 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
 }
 
 function ThresholdScrollProgress({ nativeScrollOnly }: { nativeScrollOnly: boolean }) {
+  if (nativeScrollOnly && supportsCssScrollDrivenAnimations()) {
+    return (
+      <div
+        aria-hidden="true"
+        className="limiar-mob-scroll-progress pointer-events-none fixed top-0 left-0 right-0 h-[1.5px] z-[60] origin-left bg-gradient-to-r from-[var(--accent-uv)] via-[var(--accent-uv-edge)] to-[var(--accent-acid)] opacity-60"
+      />
+    );
+  }
+
+  return <ThresholdScrollProgressJs nativeScrollOnly={nativeScrollOnly} />;
+}
+
+function ThresholdScrollProgressJs({ nativeScrollOnly }: { nativeScrollOnly: boolean }) {
   const { scrollYProgress } = useScroll();
   const sprungScaleX = useSpring(scrollYProgress, {
     stiffness: 220,

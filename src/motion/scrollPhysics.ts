@@ -62,6 +62,20 @@ export function isNativeScrollOnly(caps?: ScrollEnvironmentCaps): boolean {
   return false;
 }
 
+export function supportsCssScrollTimeline(): boolean {
+  if (typeof window === 'undefined' || typeof CSS === 'undefined' || typeof CSS.supports !== 'function') {
+    return false;
+  }
+  try {
+    return (
+      CSS.supports('animation-timeline', 'view()') &&
+      CSS.supports('timeline-scope', '--test')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export interface MobileTraversalSpanInput {
   stableViewportHeight: number;
   collectionsOffsetPx: number;

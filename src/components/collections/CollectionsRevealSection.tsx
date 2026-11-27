@@ -16,6 +16,7 @@ interface CollectionsRevealSectionProps {
   collections: Collection[];
   progressMv?: MotionValue<number>;
   staticMode?: boolean;
+  isCssDriven?: boolean;
   onViewAllProducts: () => void;
   children?: React.ReactNode;
 }
@@ -24,6 +25,7 @@ export function CollectionsRevealSection({
   collections,
   progressMv,
   staticMode = false,
+  isCssDriven = false,
   onViewAllProducts,
   children,
 }: CollectionsRevealSectionProps) {
@@ -48,6 +50,11 @@ export function CollectionsRevealSection({
   }, []);
 
   useEffect(() => {
+    if (isCssDriven) {
+      // Modo CSS Scroll-driven ativo: timeline nativa do navegador controla a revelação via GPU
+      return;
+    }
+
     let mobileHiddenApplied = false;
     let mobileSettledApplied = false;
 
@@ -155,7 +162,9 @@ export function CollectionsRevealSection({
       className={
         staticMode
           ? 'relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16'
-          : 'relative z-30 flex flex-col justify-start w-full overflow-x-clip'
+          : `relative z-30 flex flex-col justify-start w-full overflow-x-clip ${
+              isCssDriven ? 'limiar-collections-root' : ''
+            }`
       }
     >
       {/* Atmosfera contida pós-travessia */}
@@ -163,7 +172,9 @@ export function CollectionsRevealSection({
         <div
           ref={envGlowRef}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[100svh] md:h-[100dvh] opacity-0 md:transition-opacity md:duration-300"
+          className={`pointer-events-none absolute inset-x-0 top-0 h-[100svh] md:h-[100dvh] opacity-0 md:transition-opacity md:duration-300 ${
+            isCssDriven ? 'limiar-collections-env-glow' : ''
+          }`}
           style={{
             background:
               'radial-gradient(58% 46% at 50% 42%, var(--atmosphere-radial-1) 0%, transparent 72%)',
@@ -181,7 +192,9 @@ export function CollectionsRevealSection({
         {/* Cabeçalho da Seção de Coleções */}
         <div
           ref={headerRef}
-          className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 sm:mb-6 md:will-change-transform"
+          className={`flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 sm:mb-6 md:will-change-transform ${
+            isCssDriven ? 'limiar-collections-header' : ''
+          }`}
         >
           <div className="space-y-1.5 sm:space-y-2">
             <div className="flex items-center gap-2 text-[var(--text-muted)]">
@@ -232,7 +245,9 @@ export function CollectionsRevealSection({
                   }
                 }}
                 data-testid={`reveal-collection-card-${col.slug}`}
-                className="group relative glass-card rounded-[22px] sm:rounded-[26px] overflow-hidden flex flex-col justify-between cursor-pointer md:will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-uv)]"
+                className={`group relative glass-card rounded-[22px] sm:rounded-[26px] overflow-hidden flex flex-col justify-between cursor-pointer md:will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-uv)] ${
+                  isCssDriven ? (idx === 0 ? 'limiar-collections-card-0' : 'limiar-collections-card-1') : ''
+                }`}
               >
                 <div className="relative h-[106px] sm:h-[170px] lg:h-[210px] w-full overflow-hidden bg-[var(--bg-card-media)]">
                   <ResilientImage
@@ -290,7 +305,9 @@ export function CollectionsRevealSection({
         {/* Botão Final: Salto Direto para Todos os Produtos */}
         <div
           ref={ctaRef}
-          className="mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 md:will-change-transform"
+          className={`mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 md:will-change-transform ${
+            isCssDriven ? 'limiar-collections-cta' : ''
+          }`}
         >
           <UltravioletButton
             type="button"

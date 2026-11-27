@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { useMotionValue } from 'motion/react';
 import {
   computeElementCollapse,
@@ -15,6 +15,7 @@ import {
   isNativeScrollOnly,
   shouldAcceptMobileViewportHeightUpdate,
   subscribePhysicsScroll,
+  supportsCssScrollTimeline,
 } from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { ThresholdMagnetic } from '../../motion/ThresholdPrimitives';
@@ -107,6 +108,12 @@ export function HeroTraversalStage({
   const rightColRef = useRef<HTMLDivElement | null>(null);
   const compositionRef = useRef<HTMLDivElement | null>(null);
 
+  const [isCssDriven, setIsCssDriven] = useState<boolean>(() => {
+    return isNativeScrollOnly() && supportsCssScrollTimeline();
+  });
+  const isCssDrivenRef = useRef(isCssDriven);
+  isCssDrivenRef.current = isCssDriven;
+
   // Refs individuais para atração e distorção direcional sem re-render React
   const eyebrowRef = useRef<HTMLParagraphElement | null>(null);
   const titleRef = useRef<HTMLDivElement | null>(null);
@@ -163,6 +170,11 @@ export function HeroTraversalStage({
     const applyFrame = (p: number) => {
       progressMv.set(p);
       progressRef.current = p;
+
+      if (isCssDrivenRef.current) {
+        // No modo CSS Scroll-driven, o compositor nativo gerencia transforms, opacidades e keyframes
+        return;
+      }
 
       if (p < 0.78) {
         ensureWreathLoopRef.current?.();
@@ -449,6 +461,18 @@ export function HeroTraversalStage({
         stableWidth,
         stableHeight,
       };
+
+      if (trackRef.current) {
+        const effectiveSpanPx = computeMobileTraversalSpanPx({
+          stableViewportHeight: stableHeight || window.innerHeight,
+          collectionsOffsetPx,
+          maxReachableScrollPx: maxReachableScroll,
+        });
+        trackRef.current.style.setProperty(
+          '--limiar-traversal-span',
+          `${effectiveSpanPx}px`
+        );
+      }
     };
 
     const computeScrollProgress = () => {
@@ -498,12 +522,16 @@ export function HeroTraversalStage({
     const syncFromScroll = () => {
       const targetP = computeScrollProgress();
       if (nativeMode) {
+        if (isCssDrivenRef.current) {
+          // No modo CSS Scroll-driven nativo, o compositor cuida da sincronização direta 1:1 sem overhead JS
+          return;
+        }
         if (damperRafId) {
           window.cancelAnimationFrame(damperRafId);
           damperRafId = 0;
           lastTickMs = 0;
         }
-        // Mobile/touch: vínculo direto 1:1 com o scrollY real, sem inércia artificial ou atraso
+        // Mobile fallback determinístico para navegadores incompatíveis
         const directP = damper.snap(targetP);
         applyFrame(directP);
         return;
@@ -523,6 +551,10 @@ export function HeroTraversalStage({
 
     resyncRef.current = () => {
       nativeMode = isNativeScrollOnly();
+      const nextCssDriven = nativeMode && supportsCssScrollTimeline();
+      setIsCssDriven(nextCssDriven);
+      isCssDrivenRef.current = nextCssDriven;
+
       if (nativeMode && damperRafId) {
         window.cancelAnimationFrame(damperRafId);
         damperRafId = 0;
@@ -537,6 +569,10 @@ export function HeroTraversalStage({
     const onResize = () => {
       const prevNative = nativeMode;
       nativeMode = isNativeScrollOnly();
+      const nextCssDriven = nativeMode && supportsCssScrollTimeline();
+      setIsCssDriven(nextCssDriven);
+      isCssDrivenRef.current = nextCssDriven;
+
       if (nativeMode && damperRafId) {
         window.cancelAnimationFrame(damperRafId);
         damperRafId = 0;
@@ -602,9 +638,9 @@ export function HeroTraversalStage({
     resyncRef.current?.();
   }, [portalRevealed]);
 
-  // Rotação contínua exclusivamente anti-horária (suspende durante intro, aba oculta ou após p >= 0.78)
+  // Rotação contínua exclusivamente anti-horária (suspende durante intro, aba oculta ou após p >= 0.78; em modo CSS-driven roda via CSS nativo)
   useEffect(() => {
-    if (typeof window === 'undefined' || !portalRevealed) return;
+    if (typeof window === 'undefined' || !portalRevealed || isCssDriven) return;
 
     let rafId = 0;
     let lastTime = performance.now();
@@ -616,6 +652,7 @@ export function HeroTraversalStage({
     const MAX_TOTAL_DEG_PER_SEC = 112.0;
 
     const shouldRun = () =>
+      !isCssDrivenRef.current &&
       (typeof document === 'undefined' || document.visibilityState !== 'hidden') &&
       progressRef.current < 0.78;
 
@@ -686,7 +723,9 @@ export function HeroTraversalStage({
         window.cancelAnimationFrame(rafId);
       }
     };
-  }, [portalRevealed]);
+  }, [portalRevealed, isCssDriven]);
+
+  const nativeMode = isNativeScrollOnly();
 
   return (
     <section
@@ -694,8 +733,17 @@ export function HeroTraversalStage({
       data-testid="hero-traversal-track"
       data-traversal-stage="repouso"
       data-traversal-progress="0.000"
-      className="relative"
+      data-traversal-mode={
+        isCssDriven ? 'css-driven' : nativeMode ? 'js-fallback' : 'desktop'
+      }
+      className="relative limiar-traversal-track"
     >
+      {/* Gatilho exclusivo de view-timeline para CSS Scroll-driven Animations mobile */}
+      <div
+        aria-hidden="true"
+        className="limiar-traversal-trigger pointer-events-none absolute top-0 left-0 w-px"
+      />
+
       {/* Filtro SVG de distorção gravitacional discreta (qualidade alta) */}
       <svg aria-hidden="true" className="absolute w-0 h-0 overflow-hidden pointer-events-none">
         <defs>
@@ -722,7 +770,7 @@ export function HeroTraversalStage({
       {/* Palco Sticky: fixa exclusivamente a travessia hero -> singularidade -> véu em 100dvh */}
       <div
         ref={stickyStageRef}
-        className="sticky top-0 z-10 h-[100dvh] w-full overflow-hidden flex flex-col md:flex-row md:items-center pointer-events-none"
+        className="sticky top-0 z-10 h-[100dvh] w-full overflow-hidden flex flex-col md:flex-row md:items-center pointer-events-none limiar-sticky-stage"
       >
         {/* CAMADA DE TRAVESSIA: HERO + SINGULARIDADE PROCEDURAL */}
         <div
@@ -738,7 +786,7 @@ export function HeroTraversalStage({
               >
                 <div
                   ref={eyebrowRef}
-                  className="will-change-transform origin-right"
+                  className="will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <p
                     className="limiar-enter text-[11px] sm:text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]"
@@ -750,7 +798,7 @@ export function HeroTraversalStage({
 
                 <div
                   ref={titleRef}
-                  className="will-change-transform origin-right"
+                  className="will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <div
                     className="limiar-enter flex items-start gap-4"
@@ -765,7 +813,7 @@ export function HeroTraversalStage({
 
                 <div
                   ref={descRef}
-                  className="will-change-transform origin-right"
+                  className="will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <p
                     className="limiar-enter text-sm sm:text-base lg:text-lg text-[var(--text-secondary)] max-w-md leading-relaxed"
@@ -777,7 +825,7 @@ export function HeroTraversalStage({
 
                 <div
                   ref={ctaRef}
-                  className="pt-0.5 sm:pt-1 will-change-transform origin-right"
+                  className="pt-0.5 sm:pt-1 will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <div
                     className="limiar-enter"
@@ -793,7 +841,7 @@ export function HeroTraversalStage({
 
                 <div
                   ref={counterRef}
-                  className="pt-1 sm:pt-4 will-change-transform origin-right"
+                  className="pt-1 sm:pt-4 will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <div
                     className="limiar-enter flex items-center gap-4 text-[11px] tracking-[0.2em] text-[var(--text-muted)] tabular-nums"
@@ -816,6 +864,7 @@ export function HeroTraversalStage({
                 <HeroThresholdComposition
                   modelAlt={slide.imageAlt}
                   progressMv={progressMv}
+                  isCssDriven={isCssDriven}
                   collapseRefs={{
                     compositionRef,
                     blackholeOuterRef,
@@ -848,7 +897,7 @@ export function HeroTraversalStage({
         <div
           ref={scrollHintRef}
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 z-20 hidden sm:flex flex-col items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-[var(--text-muted)]"
+          className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 z-20 hidden sm:flex flex-col items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-[var(--text-muted)] limiar-scroll-hint"
         >
           <span>Role para atravessar</span>
           <span className="w-[1px] h-5 bg-gradient-to-b from-[var(--text-muted)] to-transparent" />
@@ -878,6 +927,7 @@ export function HeroTraversalStage({
       <CollectionsRevealSection
         collections={collections}
         progressMv={progressMv}
+        isCssDriven={isCssDriven}
         onViewAllProducts={onViewAllProducts}
       >
         {postCollectionsContent}
