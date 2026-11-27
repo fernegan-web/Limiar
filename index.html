@@ -37,9 +37,30 @@
       imagesizes="(max-width: 640px) 160px, 220px"
       fetchpriority="high"
     />
-    <link rel="icon" type="image/webp" href="/favicon-black.webp" media="(prefers-color-scheme: light)" />
-    <link rel="icon" type="image/webp" href="/favicon-white.webp" media="(prefers-color-scheme: dark)" />
-    <link rel="icon" type="image/webp" href="/favicon-black.webp" />
+    <link id="limiar-favicon" rel="icon" type="image/webp" href="/favicon-black.webp?v=1" />
+    <script>
+      (function () {
+        try {
+          var mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+          var faviconLink = document.getElementById('limiar-favicon');
+          function updateFavicon(isDark) {
+            if (faviconLink) {
+              faviconLink.href = isDark ? '/favicon-white.webp?v=1' : '/favicon-black.webp?v=1';
+            }
+          }
+          updateFavicon(mediaQuery.matches);
+          if (mediaQuery.addEventListener) {
+            mediaQuery.addEventListener('change', function (e) {
+              updateFavicon(e.matches);
+            });
+          } else if (mediaQuery.addListener) {
+            mediaQuery.addListener(function (e) {
+              updateFavicon(e.matches);
+            });
+          }
+        } catch (e) {}
+      })();
+    </script>
     <style>
       html.dark, html.dark body { background-color: #080909; color: #e8e7e0; }
       html.light, html.light body { background-color: #e6e4dc; color: #17191a; }
