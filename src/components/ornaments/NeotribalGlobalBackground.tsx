@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   motion,
   useMotionValue,
@@ -29,18 +29,6 @@ export function NeotribalGlobalBackground() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const { nx, ny, reducedMotion } = useThresholdPointer();
-  const [isMobile, setIsMobile] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
-  );
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 767px)');
-    const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, []);
 
   // Parallax oposto ao cursor com mola lenta e retorno suave
   const targetCursorX = useTransform(
@@ -74,8 +62,6 @@ export function NeotribalGlobalBackground() {
   useEffect(() => {
     let rafId = 0;
     let lastTravel = -1;
-    let lastVw = typeof window !== 'undefined' ? window.innerWidth : 1440;
-    let lastVh = typeof window !== 'undefined' ? window.innerHeight : 900;
 
     const measure = () => {
       rafId = 0;
@@ -105,17 +91,6 @@ export function NeotribalGlobalBackground() {
       }
     };
 
-    const onWindowResize = () => {
-      const nextVw = window.innerWidth;
-      const nextVh = window.innerHeight || 900;
-      if (isMobile && Math.abs(nextVw - lastVw) < 2 && Math.abs(nextVh - lastVh) < 160) {
-        return;
-      }
-      lastVw = nextVw;
-      lastVh = nextVh;
-      scheduleMeasure();
-    };
-
     measure();
 
     const ro =
@@ -127,13 +102,13 @@ export function NeotribalGlobalBackground() {
       if (containerRef.current) ro.observe(containerRef.current);
     }
 
-    window.addEventListener('resize', onWindowResize, { passive: true });
+    window.addEventListener('resize', scheduleMeasure, { passive: true });
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
       ro?.disconnect();
-      window.removeEventListener('resize', onWindowResize);
+      window.removeEventListener('resize', scheduleMeasure);
     };
-  }, [maxTravelMv, isMobile]);
+  }, [maxTravelMv]);
 
   return (
     <div
@@ -148,8 +123,8 @@ export function NeotribalGlobalBackground() {
       >
         <motion.div
           data-global-neotribal-bg="true"
-          style={reducedMotion || isMobile ? undefined : { x: cursorX, y: cursorY }}
-          className="relative w-[103%] -left-[1.5%] md:will-change-transform"
+          style={reducedMotion ? undefined : { x: cursorX, y: cursorY }}
+          className="relative w-[103%] -left-[1.5%] will-change-transform"
         >
           <picture className="block w-full">
             <source

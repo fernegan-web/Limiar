@@ -203,6 +203,14 @@ html.theme-transitioning circle {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* Desativa textura SVG full-viewport em mobile e tiers adaptativos para economizar banda TBDR */
+html[data-limiar-mobile="true"] .limiar-grain,
+html[data-limiar-quality="medium"] .limiar-grain,
+html[data-limiar-quality="low"] .limiar-grain,
+html[data-limiar-quality="emergency"] .limiar-grain {
+  display: none !important;
+}
+
 /* ==========================================================================
    4-TIER GLASSMORPHISM HIERARCHY
    Tier 1: .surface-base (Recessed base container)
@@ -305,6 +313,44 @@ html.theme-transitioning circle {
     background-color 280ms ease,
     box-shadow 280ms cubic-bezier(0.16, 1, 0.3, 1),
     color 240ms ease;
+}
+
+/* Degradação adaptativa de backdrop-filter para evitar saturação TBDR em GPUs fracas */
+html[data-limiar-quality="medium"] .glass-surface,
+html[data-limiar-quality="medium"] .glass-card,
+html[data-limiar-quality="medium"] .uv-glow-btn {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+html[data-limiar-quality="medium"] .glass-surface-strong {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+html[data-limiar-quality="low"] .glass-surface,
+html[data-limiar-quality="low"] .glass-surface-strong,
+html[data-limiar-quality="low"] .glass-card,
+html[data-limiar-quality="low"] .uv-glow-btn {
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+html[data-limiar-quality="emergency"] .glass-surface,
+html[data-limiar-quality="emergency"] .glass-surface-strong,
+html[data-limiar-quality="emergency"] .glass-card,
+html[data-limiar-quality="emergency"] .uv-glow-btn {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-limiar-quality="emergency"] .glass-surface,
+html[data-limiar-quality="emergency"] .glass-card {
+  background-color: var(--bg-elevated);
+}
+
+html[data-limiar-quality="emergency"] .glass-surface-strong {
+  background-color: var(--bg-canvas);
 }
 
 .uv-glow-btn::before {
@@ -483,6 +529,64 @@ html.theme-transitioning circle {
   }
 }
 
+/* Camadas pré-renderizadas do buraco negro híbrido (100% compositor GPU) */
+@keyframes limiarBlackholeHybridRear {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    opacity: 0.95;
+  }
+  50% {
+    transform: translate3d(0, 0, 0) scale(1.024) rotate(1.3deg);
+    opacity: 1;
+  }
+}
+
+@keyframes limiarBlackholeHybridHalo {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(0.992) rotate(0deg);
+    opacity: 0.84;
+  }
+  50% {
+    transform: translate3d(0, 0, 0) scale(1.032) rotate(-2.2deg);
+    opacity: 1;
+  }
+}
+
+@keyframes limiarBlackholeHybridFront {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: translate3d(0, 0, 0) scale(1.018);
+    opacity: 1;
+  }
+}
+
+.limiar-blackhole-hybrid-rear {
+  animation: limiarBlackholeHybridRear 11s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.limiar-blackhole-hybrid-halo {
+  animation: limiarBlackholeHybridHalo 8.5s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.limiar-blackhole-hybrid-front {
+  animation: limiarBlackholeHybridFront 9.5s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .limiar-blackhole-hybrid-rear,
+  .limiar-blackhole-hybrid-halo,
+  .limiar-blackhole-hybrid-front {
+    animation: none !important;
+    will-change: auto;
+  }
+}
+
 .limiar-ambient-float {
   animation: limiarFloat 15s ease-in-out infinite;
 }
@@ -509,8 +613,25 @@ html.theme-transitioning circle {
   }
 }
 
+@keyframes limiarSlideInClean {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 .limiar-enter {
   animation: limiarBlurIn 540ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+html[data-limiar-quality="medium"] .limiar-enter,
+html[data-limiar-quality="low"] .limiar-enter,
+html[data-limiar-quality="emergency"] .limiar-enter {
+  animation-name: limiarSlideInClean;
 }
 
 html.limiar-intro-holding .limiar-enter {
@@ -755,46 +876,5 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
 .wix-description span[style*="font-weight"] {
   color: var(--text-primary);
   font-weight: 600;
-}
-
-/* ==========================================================================
-   MOBILE-ONLY COMPOSITOR & FILTER OPTIMIZATIONS (<= 767px)
-   Desktop (>= 768px) permanece estritamente inalterado.
-   ========================================================================== */
-@media (max-width: 767px) {
-  :root {
-    --bg-surface: rgba(255, 255, 255, 0.78);
-    --bg-glass: rgba(242, 240, 234, 0.86);
-    --bg-glass-strong: rgba(246, 244, 239, 0.94);
-  }
-
-  .dark {
-    --bg-surface: rgba(23, 25, 26, 0.82);
-    --bg-glass: rgba(16, 18, 19, 0.88);
-    --bg-glass-strong: rgba(13, 15, 16, 0.94);
-  }
-
-  .limiar-grain {
-    display: none;
-  }
-
-  .glass-surface,
-  .glass-surface-strong,
-  .glass-card,
-  .uv-glow-btn {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  @keyframes limiarBlurIn {
-    from {
-      opacity: 0;
-      transform: translate3d(0, 14px, 0);
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0);
-    }
-  }
 }
 
