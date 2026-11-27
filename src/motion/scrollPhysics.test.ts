@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import {
   CinematicProgressDamper,
   HERO_TRAVERSAL_DAMPER_CONFIG,
+  computeDeterministicTraversalProgress,
+  computeMobileTraversalSpanPx,
   getEffectiveScrollY,
   isNativeScrollOnly,
   setLenisInstance,
+  shouldAcceptMobileViewportHeightUpdate,
 } from './scrollPhysics';
 
 test('isNativeScrollOnly isolates mobile and touch devices while preserving Desktop', () => {
@@ -21,12 +24,24 @@ test('isNativeScrollOnly isolates mobile and touch devices while preserving Desk
     true
   );
 
-  // Smartphone landscape (width >= 768, coarse pointer, no fine pointer)
+  // Smartphone landscape (width >= 768, hover: none)
   assert.equal(
     isNativeScrollOnly({
       hasCoarsePointer: true,
       hasNoHover: true,
       hasFinePointer: false,
+      maxTouchPoints: 5,
+      innerWidth: 844,
+    }),
+    true
+  );
+
+  // Touch device in landscape reporting hover: none even with fine pointer quirk
+  assert.equal(
+    isNativeScrollOnly({
+      hasCoarsePointer: true,
+      hasNoHover: true,
+      hasFinePointer: true,
       maxTouchPoints: 5,
       innerWidth: 844,
     }),
@@ -69,7 +84,7 @@ test('isNativeScrollOnly isolates mobile and touch devices while preserving Desk
     false
   );
 
-  // Hybrid desktop/notebook with touchscreen + trackpad/mouse (`pointer: fine`)
+  // Hybrid desktop/notebook with touchscreen + trackpad/mouse (`pointer: fine` + hover)
   assert.equal(
     isNativeScrollOnly({
       hasCoarsePointer: false,
@@ -133,4 +148,35 @@ test('getEffectiveScrollY uses native window.scrollY on mobile even if a Lenis i
     setLenisInstance(null);
     (globalThis as { window?: unknown }).window = originalWindow;
   }
+});
+
+test('mobile traversal progress maps 1:1 to real scrollY, clamps at spatial limit, and ignores Chrome Android URL bar jitter', () => {
+  // Chrome Android address bar collapse/expand (same width, +84px height) is ignored
+  assert.equal(shouldAcceptMobileViewportHeightUpdate(390, 760, 390, 844), false);
+  // Real orientation change (width changes) is accepted
+  assert.equal(shouldAcceptMobileViewportHeightUpdate(390, 760, 844, 390), true);
+
+  // Portrait 390x780: sticky(780) + spacer(624) = 1404px collectionsOffsetPx
+  const spanPx = computeMobileTraversalSpanPx({
+    stableViewportHeight: 780,
+    collectionsOffsetPx: 1404,
+    maxReachableScrollPx: 3200,
+  });
+  assert.ok(spanPx > 0 && spanPx <= 1404);
+
+  // Exact 1:1 deterministic mapping
+  assert.equal(computeDeterministicTraversalProgress(0, spanPx), 0);
+  assert.ok(
+    Math.abs(computeDeterministicTraversalProgress(spanPx * 0.2, spanPx) - 0.2) < 1e-6
+  );
+  assert.ok(
+    Math.abs(computeDeterministicTraversalProgress(spanPx * 0.9, spanPx) - 0.9) < 1e-6
+  );
+  // Spatial boundary clamp & past-boundary completion
+  assert.equal(computeDeterministicTraversalProgress(spanPx, spanPx), 1);
+  assert.equal(computeDeterministicTraversalProgress(spanPx + 950, spanPx), 1);
+  // Instant reversal
+  assert.ok(
+    Math.abs(computeDeterministicTraversalProgress(spanPx * 0.45, spanPx) - 0.45) < 1e-6
+  );
 });

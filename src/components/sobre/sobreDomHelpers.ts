@@ -1,5 +1,4 @@
 import type { ElementVisualState } from '../../motion/sobreTimeline';
-import { shouldEnableDynamicBlur } from '../../performance/performanceRuntime';
 
 /**
  * Aplica estado visual diretamente ao nó DOM sem provocar re-renders React.
@@ -16,8 +15,7 @@ export function applyVisualState(
   }
 ): void {
   if (!node) return;
-  const allowBlur = shouldEnableDynamicBlur();
-  const effectiveBlur = allowBlur ? state.blurPx : 0;
+  const effectiveBlur = state.blurPx;
   const totalY = state.y + (options?.extraY ?? 0);
   const isAtRest =
     state.opacity >= 0.999 &&

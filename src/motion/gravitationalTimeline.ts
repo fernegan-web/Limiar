@@ -10,8 +10,6 @@ export type TraversalStage =
 
 export type BlackHoleOperationalState = 'rest' | 'traversal' | 'inactive';
 
-export type BlackHoleQualityTier = 'high' | 'medium' | 'low' | 'static';
-
 export const TRAVERSAL_STAGE_BOUNDS = {
   repouso: { start: 0, end: 0.1 },
   despertar: { start: 0.1, end: 0.3 },
@@ -60,43 +58,6 @@ export function resolveOperationalState(params: {
   if (p >= 0.72) return 'inactive';
   if (p <= 0.1) return 'rest';
   return 'traversal';
-}
-
-export interface QualityProfileInput {
-  webglSupported: boolean;
-  isSoftwareGl: boolean;
-  isMobile: boolean;
-  hardwareConcurrency?: number;
-  deviceMemoryGb?: number;
-  measuredFps?: number;
-  contextLost?: boolean;
-}
-
-export function selectQualityTier(input: QualityProfileInput): BlackHoleQualityTier {
-  if (!input.webglSupported || input.contextLost) {
-    return 'static';
-  }
-  if (input.isSoftwareGl) {
-    return 'low';
-  }
-  if (typeof input.measuredFps === 'number' && input.measuredFps < 20) {
-    return 'low';
-  }
-  const cores = input.hardwareConcurrency ?? 8;
-  const mem = input.deviceMemoryGb ?? 8;
-  if (cores <= 2 || mem <= 2) {
-    return 'low';
-  }
-  if (typeof input.measuredFps === 'number' && input.measuredFps < 34) {
-    return 'medium';
-  }
-  if (input.isMobile && (cores < 6 || mem < 6)) {
-    return 'medium';
-  }
-  if (cores <= 3 || mem <= 3) {
-    return 'medium';
-  }
-  return 'high';
 }
 
 export interface GravitationalElementState {

@@ -1,17 +1,19 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { useMotionValue } from 'motion/react';
 import {
   computeElementCollapse,
   computeSingularityFrame,
   smootherstep,
-  type BlackHoleQualityTier,
   type CollapseVectorConfig,
 } from '../../motion/gravitationalTimeline';
 import {
   CinematicProgressDamper,
   HERO_TRAVERSAL_DAMPER_CONFIG,
+  computeDeterministicTraversalProgress,
+  computeMobileTraversalSpanPx,
   getEffectiveScrollY,
   isNativeScrollOnly,
+  shouldAcceptMobileViewportHeightUpdate,
   subscribePhysicsScroll,
 } from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
@@ -120,6 +122,8 @@ export function HeroTraversalStage({
   const wreathRotateRef = useRef<HTMLDivElement | null>(null);
   const wreathBlurRef = useRef<HTMLDivElement | null>(null);
   const modelCollapseRef = useRef<HTMLDivElement | null>(null);
+  const stickyStageRef = useRef<HTMLDivElement | null>(null);
+  const spacerRef = useRef<HTMLDivElement | null>(null);
   const voidVeilRef = useRef<HTMLDivElement | null>(null);
   const heroOverlayGroupRef = useRef<HTMLDivElement | null>(null);
 
@@ -131,19 +135,20 @@ export function HeroTraversalStage({
   const wasAtRestRef = useRef(false);
   const wasPastRevealRef = useRef(false);
   const ensureWreathLoopRef = useRef<(() => void) | null>(null);
-  const metricsRef = useRef({ sectionTopDocY: 0, maxReachableScroll: 1 });
+  const resyncRef = useRef<(() => void) | null>(null);
+  const metricsRef = useRef({
+    sectionTopDocY: 0,
+    maxReachableScroll: 1,
+    collectionsOffsetPx: 0,
+    stableWidth: 0,
+    stableHeight: 0,
+  });
 
   const displacementRef = useRef<SVGFEDisplacementMapElement | null>(null);
   const rawId = useId();
   const warpFilterId = `limiar-gravity-warp-${rawId.replace(/:/g, '')}`;
 
-  const [qualityTier, setQualityTier] = useState<BlackHoleQualityTier>('high');
-
   const progressMv = useMotionValue(0);
-
-  const handleQualityChange = useCallback((tier: BlackHoleQualityTier) => {
-    setQualityTier(tier);
-  }, []);
 
   useEffect(() => {
     const restConfig: CollapseVectorConfig = {
@@ -183,6 +188,9 @@ export function HeroTraversalStage({
       // Fast-path em repouso: evita leituras de layout e escritas redundantes no DOM
       if (p <= 0.1) {
         wasPastRevealRef.current = false;
+        if (stickyStageRef.current && stickyStageRef.current.style.visibility !== 'visible') {
+          stickyStageRef.current.style.visibility = 'visible';
+        }
         if (!wasAtRestRef.current) {
           wasAtRestRef.current = true;
           if (displacementRef.current) {
@@ -227,11 +235,17 @@ export function HeroTraversalStage({
 
       if (p >= 1) {
         if (wasPastRevealRef.current) {
+          if (stickyStageRef.current && stickyStageRef.current.style.visibility !== 'hidden') {
+            stickyStageRef.current.style.visibility = 'hidden';
+          }
           return;
         }
         wasPastRevealRef.current = true;
       } else {
         wasPastRevealRef.current = false;
+        if (stickyStageRef.current && stickyStageRef.current.style.visibility !== 'visible') {
+          stickyStageRef.current.style.visibility = 'visible';
+        }
       }
 
       // PASSO 1 (APENAS LEITURAS): lê toda a geometria de layout em lote único antes de qualquer escrita
@@ -264,8 +278,8 @@ export function HeroTraversalStage({
       const targetSingularityX = bhCenterX + shiftX;
       const targetSingularityY = bhCenterY + shiftY;
 
-      const useSvgWarp = qualityTier === 'high';
-      if (useSvgWarp && displacementRef.current) {
+      const useSvgWarp = true;
+      if (displacementRef.current) {
         const warpAmount =
           p > 0.22 && p < 0.68 ? Number((frame.warpIntensity * 14).toFixed(2)) : 0;
         displacementRef.current.setAttribute('scale', String(warpAmount));
@@ -389,6 +403,10 @@ export function HeroTraversalStage({
       if (voidVeilRef.current) {
         voidVeilRef.current.style.opacity = String(frame.voidVeilOpacity);
       }
+
+      if (stickyStageRef.current) {
+        stickyStageRef.current.style.visibility = p >= 1 ? 'hidden' : 'visible';
+      }
     };
 
     let nativeMode = isNativeScrollOnly();
@@ -398,22 +416,62 @@ export function HeroTraversalStage({
 
     const measureMetrics = () => {
       if (typeof window === 'undefined' || !trackRef.current) return;
-      const vh = Math.max(window.innerHeight, 320);
+      const winW = window.innerWidth;
+      const winH = Math.max(window.innerHeight, 320);
+      const prev = metricsRef.current;
+
+      const shouldUpdateStableVh =
+        !nativeMode ||
+        prev.stableHeight === 0 ||
+        shouldAcceptMobileViewportHeightUpdate(prev.stableWidth, prev.stableHeight, winW, winH);
+
+      const stableWidth = shouldUpdateStableVh ? winW : prev.stableWidth;
+      const stableHeight = shouldUpdateStableVh ? winH : prev.stableHeight;
+
       const rect = trackRef.current.getBoundingClientRect();
       const sectionTopDocY = rect.top + getEffectiveScrollY();
       const maxReachableScroll = Math.max(
         1,
-        document.documentElement.scrollHeight - vh - sectionTopDocY
+        document.documentElement.scrollHeight - stableHeight - sectionTopDocY
       );
-      metricsRef.current = { sectionTopDocY, maxReachableScroll };
+
+      let collectionsOffsetPx = prev.collectionsOffsetPx;
+      if (shouldUpdateStableVh || collectionsOffsetPx <= 0) {
+        collectionsOffsetPx = spacerRef.current
+          ? spacerRef.current.offsetTop + spacerRef.current.offsetHeight
+          : stableHeight * 1.8;
+      }
+
+      metricsRef.current = {
+        sectionTopDocY,
+        maxReachableScroll,
+        collectionsOffsetPx,
+        stableWidth,
+        stableHeight,
+      };
     };
 
     const computeScrollProgress = () => {
       if (typeof window === 'undefined') return 0;
+      const {
+        sectionTopDocY,
+        maxReachableScroll,
+        collectionsOffsetPx,
+        stableHeight,
+      } = metricsRef.current;
+      const scrolledPastTop = Math.max(0, getEffectiveScrollY() - sectionTopDocY);
+
+      if (nativeMode) {
+        const effectiveSpanPx = computeMobileTraversalSpanPx({
+          stableViewportHeight: stableHeight || window.innerHeight,
+          collectionsOffsetPx,
+          maxReachableScrollPx: maxReachableScroll,
+        });
+        return computeDeterministicTraversalProgress(scrolledPastTop, effectiveSpanPx);
+      }
+
       const vh = Math.max(window.innerHeight, 320);
       const isMob = window.innerWidth < 768;
-      const { sectionTopDocY, maxReachableScroll } = metricsRef.current;
-      const scrolledPastTop = Math.max(0, getEffectiveScrollY() - sectionTopDocY);
       const baseSpanPx = vh * (isMob ? 2.12 : 2.4);
       const effectiveSpanPx = Math.min(baseSpanPx, maxReachableScroll / 0.94);
       return Math.min(1, Math.max(0, scrolledPastTop / Math.max(1, effectiveSpanPx)));
@@ -463,7 +521,7 @@ export function HeroTraversalStage({
       applyFrame(snapped);
     };
 
-    const onResize = () => {
+    resyncRef.current = () => {
       nativeMode = isNativeScrollOnly();
       if (nativeMode && damperRafId) {
         window.cancelAnimationFrame(damperRafId);
@@ -476,12 +534,48 @@ export function HeroTraversalStage({
       snapFromLayout();
     };
 
+    const onResize = () => {
+      const prevNative = nativeMode;
+      nativeMode = isNativeScrollOnly();
+      if (nativeMode && damperRafId) {
+        window.cancelAnimationFrame(damperRafId);
+        damperRafId = 0;
+        lastTickMs = 0;
+      }
+
+      const significantChange =
+        !nativeMode ||
+        prevNative !== nativeMode ||
+        shouldAcceptMobileViewportHeightUpdate(
+          metricsRef.current.stableWidth,
+          metricsRef.current.stableHeight,
+          window.innerWidth,
+          window.innerHeight
+        );
+
+      if (significantChange) {
+        wasAtRestRef.current = false;
+        wasPastRevealRef.current = false;
+      }
+
+      measureMetrics();
+      snapFromLayout();
+    };
+
+    const onPageShow = () => {
+      measureMetrics();
+      snapFromLayout();
+    };
+
     measureMetrics();
     snapFromLayout();
 
     const unsubPhysics = subscribePhysicsScroll(syncFromScroll);
     window.addEventListener('resize', onResize, { passive: true });
-    window.visualViewport?.addEventListener('resize', onResize, { passive: true });
+    window.addEventListener('pageshow', onPageShow, { passive: true });
+    if (!nativeMode) {
+      window.visualViewport?.addEventListener('resize', onResize, { passive: true });
+    }
 
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && trackRef.current) {
@@ -493,13 +587,20 @@ export function HeroTraversalStage({
     }
 
     return () => {
+      resyncRef.current = null;
       if (damperRafId) window.cancelAnimationFrame(damperRafId);
       unsubPhysics();
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('pageshow', onPageShow);
       window.visualViewport?.removeEventListener('resize', onResize);
       resizeObserver?.disconnect();
     };
-  }, [progressMv, qualityTier, warpFilterId]);
+  }, [progressMv, warpFilterId]);
+
+  useEffect(() => {
+    if (!portalRevealed) return;
+    resyncRef.current?.();
+  }, [portalRevealed]);
 
   // Rotação contínua exclusivamente anti-horária (suspende durante intro, aba oculta ou após p >= 0.78)
   useEffect(() => {
@@ -619,7 +720,10 @@ export function HeroTraversalStage({
       </svg>
 
       {/* Palco Sticky: fixa exclusivamente a travessia hero -> singularidade -> véu em 100dvh */}
-      <div className="sticky top-0 z-10 h-[100dvh] w-full overflow-hidden flex flex-col md:flex-row md:items-center pointer-events-none">
+      <div
+        ref={stickyStageRef}
+        className="sticky top-0 z-10 h-[100dvh] w-full overflow-hidden flex flex-col md:flex-row md:items-center pointer-events-none"
+      >
         {/* CAMADA DE TRAVESSIA: HERO + SINGULARIDADE PROCEDURAL */}
         <div
           ref={heroOverlayGroupRef}
@@ -712,7 +816,6 @@ export function HeroTraversalStage({
                 <HeroThresholdComposition
                   modelAlt={slide.imageAlt}
                   progressMv={progressMv}
-                  onBlackHoleQualityChange={handleQualityChange}
                   collapseRefs={{
                     compositionRef,
                     blackholeOuterRef,
@@ -765,7 +868,11 @@ export function HeroTraversalStage({
       </div>
 
       {/* Espaço da travessia gravitacional antes da entrada sequencial das coleções */}
-      <div aria-hidden="true" className="h-[80vh] md:h-[104vh] pointer-events-none" />
+      <div
+        ref={spacerRef}
+        aria-hidden="true"
+        className="h-[80vh] md:h-[104vh] pointer-events-none"
+      />
 
       {/* REVELAÇÃO SEQUENCIAL DAS COLEÇÕES + CONTEÚDO UNIFICADO DA HOMEPAGE */}
       <CollectionsRevealSection

@@ -91,18 +91,27 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       setLenisInstance(null);
       lenisRef.current = null;
 
-      let lastNotifiedY = -1;
+      let lastNotifiedY = Number.NaN;
       const handleNativeScroll = () => {
         const y = window.scrollY;
-        if (Math.abs(y - lastNotifiedY) > 0.01) {
+        if (Number.isNaN(lastNotifiedY) || Math.abs(y - lastNotifiedY) > 0.01) {
           lastNotifiedY = y;
           notifyPhysicsScroll();
         }
       };
 
+      const handleNativeScrollEndOrShow = () => {
+        lastNotifiedY = window.scrollY;
+        notifyPhysicsScroll();
+      };
+
       window.addEventListener('scroll', handleNativeScroll, { passive: true });
+      window.addEventListener('scrollend', handleNativeScrollEndOrShow, { passive: true });
+      window.addEventListener('pageshow', handleNativeScrollEndOrShow, { passive: true });
       return () => {
         window.removeEventListener('scroll', handleNativeScroll);
+        window.removeEventListener('scrollend', handleNativeScrollEndOrShow);
+        window.removeEventListener('pageshow', handleNativeScrollEndOrShow);
       };
     }
 

@@ -163,7 +163,7 @@ export function CollectionsRevealSection({
         <div
           ref={envGlowRef}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[100svh] md:h-[100dvh] opacity-0 transition-opacity duration-300"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[100svh] md:h-[100dvh] opacity-0 md:transition-opacity md:duration-300"
           style={{
             background:
               'radial-gradient(58% 46% at 50% 42%, var(--atmosphere-radial-1) 0%, transparent 72%)',

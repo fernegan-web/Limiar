@@ -6,7 +6,6 @@ import {
   computeSingularityFrame,
   resolveOperationalState,
   resolveTraversalStage,
-  selectQualityTier,
 } from './gravitationalTimeline';
 
 test('resolveTraversalStage maps all six choreography phases accurately', () => {
@@ -60,61 +59,6 @@ test('resolveOperationalState transitions cleanly between rest, traversal, and i
       tabVisible: false,
     }),
     'inactive'
-  );
-});
-
-test('selectQualityTier handles WebGL fallback, software GL, low FPS, and capable devices accurately', () => {
-  assert.equal(
-    selectQualityTier({ webglSupported: false, isSoftwareGl: false, isMobile: false }),
-    'static'
-  );
-  assert.equal(
-    selectQualityTier({ webglSupported: true, isSoftwareGl: false, isMobile: false, contextLost: true }),
-    'static'
-  );
-  assert.equal(
-    selectQualityTier({ webglSupported: true, isSoftwareGl: true, isMobile: false }),
-    'low'
-  );
-  assert.equal(
-    selectQualityTier({
-      webglSupported: true,
-      isSoftwareGl: false,
-      isMobile: true,
-      hardwareConcurrency: 4,
-      deviceMemoryGb: 4,
-    }),
-    'medium'
-  );
-  assert.equal(
-    selectQualityTier({
-      webglSupported: true,
-      isSoftwareGl: false,
-      isMobile: false,
-      hardwareConcurrency: 4,
-      deviceMemoryGb: 4,
-    }),
-    'high'
-  );
-  assert.equal(
-    selectQualityTier({
-      webglSupported: true,
-      isSoftwareGl: false,
-      isMobile: false,
-      hardwareConcurrency: 8,
-      deviceMemoryGb: 16,
-      measuredFps: 59,
-    }),
-    'high'
-  );
-  assert.equal(
-    selectQualityTier({
-      webglSupported: true,
-      isSoftwareGl: false,
-      isMobile: false,
-      measuredFps: 18,
-    }),
-    'low'
   );
 });
 

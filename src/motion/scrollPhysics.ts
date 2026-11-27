@@ -52,13 +52,56 @@ export function readScrollEnvironmentCaps(): ScrollEnvironmentCaps {
 export function isNativeScrollOnly(caps?: ScrollEnvironmentCaps): boolean {
   const resolved = caps ?? readScrollEnvironmentCaps();
   if (resolved.innerWidth < 768) return true;
-  if ((resolved.hasCoarsePointer || resolved.hasNoHover) && !resolved.hasFinePointer) {
+  if (resolved.hasNoHover) return true;
+  if (resolved.hasCoarsePointer && !resolved.hasFinePointer) {
     return true;
   }
   if (resolved.maxTouchPoints > 0 && !resolved.hasFinePointer) {
     return true;
   }
   return false;
+}
+
+export interface MobileTraversalSpanInput {
+  stableViewportHeight: number;
+  collectionsOffsetPx: number;
+  maxReachableScrollPx: number;
+}
+
+export function shouldAcceptMobileViewportHeightUpdate(
+  prevWidth: number,
+  prevHeight: number,
+  nextWidth: number,
+  nextHeight: number
+): boolean {
+  if (Math.abs(nextWidth - prevWidth) > 2) return true;
+  // Ignora oscilações verticais causadas pela barra de endereço mobile (ex: Chrome Android ~56–130px)
+  return Math.abs(nextHeight - prevHeight) > 160;
+}
+
+export function computeMobileTraversalSpanPx({
+  stableViewportHeight,
+  collectionsOffsetPx,
+  maxReachableScrollPx,
+}: MobileTraversalSpanInput): number {
+  const safeVh = Math.max(stableViewportHeight, 320);
+  const baseSpanPx = safeVh * 1.76;
+  const spatialLimitPx =
+    collectionsOffsetPx > 0 ? collectionsOffsetPx : baseSpanPx;
+  const reachableLimitPx =
+    maxReachableScrollPx > 0 ? maxReachableScrollPx / 0.94 : baseSpanPx;
+  const minFloorPx = Math.min(Math.max(320, safeVh * 1.2), spatialLimitPx);
+  return Math.max(minFloorPx, Math.min(baseSpanPx, spatialLimitPx, reachableLimitPx));
+}
+
+export function computeDeterministicTraversalProgress(
+  scrolledPastTopPx: number,
+  effectiveSpanPx: number
+): number {
+  if (effectiveSpanPx <= 0) return 1;
+  if (scrolledPastTopPx <= 0) return 0;
+  if (scrolledPastTopPx >= effectiveSpanPx) return 1;
+  return clamp(scrolledPastTopPx / effectiveSpanPx, 0, 1);
 }
 
 type ScrollListener = () => void;
