@@ -7,6 +7,7 @@ import {
   type ProgressDamperConfig,
 } from '../../motion/scrollPhysics';
 import { clamp } from '../../motion/thresholdConfig';
+import { frameScheduler } from '../../performance/frameScheduler';
 import { Block01Manifesto } from './Block01Manifesto';
 import { Block02Raizes } from './Block02Raizes';
 import { Block03Identidade } from './Block03Identidade';
@@ -21,6 +22,8 @@ const SOBRE_DAMPER_CONFIG: ProgressDamperConfig = {
   maxSpeedPerSec: 1.45,
   softCatchupThreshold: 0.28,
 };
+
+const SOBRE_TASK_ID = 'sobre-desktop-dampers';
 
 const BLOCK_IDS = [
   'sobre-bloco-01-manifesto',
@@ -48,6 +51,11 @@ function isStickyDesktopViewport(): boolean {
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+interface CachedRunwayGeometry {
+  topDocY: number;
+  height: number;
 }
 
 /**
@@ -82,9 +90,27 @@ export function SobreLimiarSection() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    let rafId = 0;
-    let lastTime = performance.now();
     let lastScrollY = getEffectiveScrollY();
+    let isSectionNearViewport = false;
+    let mobileInitialized = false;
+    const cachedRunways: CachedRunwayGeometry[] = Array.from({ length: 6 }, () => ({
+      topDocY: 0,
+      height: 800,
+    }));
+    const lastMobileOpacity = Array<number>(6).fill(-1);
+
+    const measureRunwayGeometry = () => {
+      const scrollY = window.scrollY || window.pageYOffset || 0;
+      for (let i = 0; i < 6; i++) {
+        const runway = runwayRefs.current[i];
+        if (!runway) continue;
+        const rect = runway.getBoundingClientRect();
+        cachedRunways[i] = {
+          topDocY: rect.top + scrollY,
+          height: Math.max(1, rect.height),
+        };
+      }
+    };
 
     const triggerLookaheadPreload = (activeIndex: number) => {
       const targetIndex = Math.min(5, activeIndex + 1);
@@ -96,48 +122,65 @@ export function SobreLimiarSection() {
       }
     };
 
-    const updateMobileFlow = () => {
+    const updateMobileFlow = (forceInitial = false) => {
       const vh = window.innerHeight || 800;
+      const scrollY = getEffectiveScrollY();
+      const reduced = prefersReducedMotion();
+
       for (let i = 0; i < 6; i++) {
-        // No mobile, preserva fluxo natural sem esconder textos nem prender altura sticky
-        applyFnsRef.current[i]?.(null);
-
-        const el = mobileCardRefs.current[i];
-        const runway = runwayRefs.current[i];
-        if (!el || !runway) continue;
-
-        const rect = runway.getBoundingClientRect();
-        if (rect.top < vh * 1.4 && rect.bottom > -vh * 0.4) {
-          triggerLookaheadPreload(i);
+        if (!mobileInitialized || forceInitial) {
+          // No mobile, preserva fluxo natural sem esconder textos nem prender altura sticky
+          applyFnsRef.current[i]?.(null);
         }
 
-        if (prefersReducedMotion()) {
-          el.style.opacity = '1';
-          el.style.transform = 'none';
+        const el = mobileCardRefs.current[i];
+        const geo = cachedRunways[i];
+        if (!el) continue;
+
+        const rectTop = geo.topDocY - scrollY;
+        const rectBottom = rectTop + geo.height;
+
+        if (!forceInitial && (rectBottom < -vh * 0.5 || rectTop > vh * 1.5)) {
+          // Fora da vizinhança da viewport: não recalcula nem muta o DOM durante o scroll no Hero
           continue;
         }
 
-        // Entrada suave quando entra pela base da viewport; permanece 100% legível na leitura
-        const enterT = clamp((vh * 0.94 - rect.top) / (vh * 0.34), 0, 1);
+        if (rectTop < vh * 1.4 && rectBottom > -vh * 0.4) {
+          triggerLookaheadPreload(i);
+        }
+
+        if (reduced) {
+          if (lastMobileOpacity[i] !== 1) {
+            lastMobileOpacity[i] = 1;
+            el.style.opacity = '1';
+            el.style.transform = 'none';
+          }
+          continue;
+        }
+
+        const enterT = clamp((vh * 0.94 - rectTop) / (vh * 0.34), 0, 1);
         const eased = 1 - Math.pow(1 - enterT, 3);
         const exitT =
           i === 5
             ? 1
-            : clamp((rect.bottom - vh * 0.04) / (vh * 0.22), 0.25, 1);
+            : clamp((rectBottom - vh * 0.04) / (vh * 0.22), 0.25, 1);
         const opacity = Math.min(eased, exitT);
+        const roundedOp = opacity >= 0.995 ? 1 : Number(opacity.toFixed(3));
 
-        el.style.opacity = opacity >= 0.995 ? '1' : opacity.toFixed(3);
-        el.style.transform =
-          eased >= 0.995 ? 'none' : `translate3d(0, ${((1 - eased) * 18).toFixed(2)}px, 0)`;
+        if (Math.abs(roundedOp - lastMobileOpacity[i]) > 0.003 || forceInitial) {
+          lastMobileOpacity[i] = roundedOp;
+          el.style.opacity = String(roundedOp);
+          el.style.transform =
+            eased >= 0.995 ? 'none' : `translate3d(0, ${((1 - eased) * 18).toFixed(2)}px, 0)`;
+        }
       }
+      mobileInitialized = true;
     };
 
-    const stepDesktopDamper = (now: number) => {
-      rafId = 0;
-      const dtSec = Math.min((now - lastTime) / 1000, 0.045);
-      lastTime = now;
-
+    const runDesktopDamperTick = (_nowMs: number, dtMs: number): boolean => {
+      const dtSec = Math.min(dtMs / 1000, 0.045);
       let anyMoving = false;
+
       for (let i = 0; i < 6; i++) {
         const damper = dampersRef.current[i];
         if (!damper.isSettled()) {
@@ -152,9 +195,7 @@ export function SobreLimiarSection() {
         }
       }
 
-      if (anyMoving) {
-        rafId = window.requestAnimationFrame(stepDesktopDamper);
-      }
+      return anyMoving;
     };
 
     const syncAll = (snapImmediate = false) => {
@@ -162,10 +203,7 @@ export function SobreLimiarSection() {
       const desktopSticky = isStickyDesktopViewport();
 
       if (reduced) {
-        if (rafId) {
-          window.cancelAnimationFrame(rafId);
-          rafId = 0;
-        }
+        frameScheduler.stopTask(SOBRE_TASK_ID);
         for (let i = 0; i < 6; i++) {
           applyFnsRef.current[i]?.(i === 5 ? 0.85 : 0.42);
           const m = mobileCardRefs.current[i];
@@ -178,20 +216,24 @@ export function SobreLimiarSection() {
       }
 
       if (!desktopSticky) {
-        if (rafId) {
-          window.cancelAnimationFrame(rafId);
-          rafId = 0;
+        frameScheduler.stopTask(SOBRE_TASK_ID);
+        if (!isSectionNearViewport && !snapImmediate && mobileInitialized) {
+          return;
         }
-        updateMobileFlow();
+        updateMobileFlow(snapImmediate);
         return;
       }
 
       // Garante reset de wrapper mobile quando alterna para desktop
-      for (let i = 0; i < 6; i++) {
-        const m = mobileCardRefs.current[i];
-        if (m) {
-          m.style.opacity = '1';
-          m.style.transform = 'none';
+      if (snapImmediate || mobileInitialized) {
+        mobileInitialized = false;
+        for (let i = 0; i < 6; i++) {
+          lastMobileOpacity[i] = -1;
+          const m = mobileCardRefs.current[i];
+          if (m) {
+            m.style.opacity = '1';
+            m.style.transform = 'none';
+          }
         }
       }
 
@@ -201,15 +243,18 @@ export function SobreLimiarSection() {
       lastScrollY = currentY;
       const shouldSnap = snapImmediate || scrollJump > vh * 1.8;
 
+      if (!isSectionNearViewport && !shouldSnap) {
+        const allSettled = dampersRef.current.every((d) => d.isSettled());
+        if (allSettled) return;
+      }
+
       let needsRaf = false;
       for (let i = 0; i < 6; i++) {
-        const runway = runwayRefs.current[i];
-        if (!runway) continue;
-
-        const rect = runway.getBoundingClientRect();
-        const travel = Math.max(1, rect.height - vh);
+        const geo = cachedRunways[i];
+        const rectTop = geo.topDocY - currentY;
+        const travel = Math.max(1, geo.height - vh);
         const leadIn = i === 0 ? vh * 0.28 : vh * 0.36;
-        const rawP = clamp((leadIn - rect.top) / (leadIn + travel), 0, 1);
+        const rawP = clamp((leadIn - rectTop) / (leadIn + travel), 0, 1);
 
         if (rawP > 0.01 && rawP < 0.99) {
           triggerLookaheadPreload(i);
@@ -218,8 +263,10 @@ export function SobreLimiarSection() {
         const damper = dampersRef.current[i];
         if (shouldSnap) {
           const snapped = damper.snap(rawP);
-          lastRenderedRef.current[i] = snapped;
-          applyFnsRef.current[i]?.(snapped);
+          if (Math.abs(snapped - lastRenderedRef.current[i]) > 0.0002 || snapImmediate) {
+            lastRenderedRef.current[i] = snapped;
+            applyFnsRef.current[i]?.(snapped);
+          }
         } else {
           damper.setTarget(rawP);
           if (!damper.isSettled()) {
@@ -231,34 +278,56 @@ export function SobreLimiarSection() {
         }
       }
 
-      if (needsRaf && !rafId) {
-        lastTime = performance.now();
-        rafId = window.requestAnimationFrame(stepDesktopDamper);
+      if (needsRaf) {
+        frameScheduler.scheduleTask(SOBRE_TASK_ID, runDesktopDamperTick);
+      } else {
+        frameScheduler.stopTask(SOBRE_TASK_ID);
       }
     };
 
-    // Pré-carrega o primeiro bloco apenas quando o visitante se aproxima da seção
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
+        const entry = entries[0];
+        const nextNear = Boolean(entry?.isIntersecting);
+        isSectionNearViewport = nextNear;
+        if (nextNear) {
           triggerLookaheadPreload(0);
-          observer.disconnect();
+          measureRunwayGeometry();
+          syncAll(false);
         }
       },
-      { rootMargin: '420px 0px' }
+      { rootMargin: '520px 0px' }
     );
     if (sectionRef.current) {
       observer.observe(sectionRef.current);
     }
 
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            measureRunwayGeometry();
+          })
+        : null;
+    if (resizeObserver && sectionRef.current) {
+      resizeObserver.observe(sectionRef.current);
+      if (document.body) {
+        resizeObserver.observe(document.body);
+      }
+    }
+
+    measureRunwayGeometry();
     syncAll(true);
     const unsubScroll = subscribePhysicsScroll(() => syncAll(false));
-    const handleResize = () => syncAll(true);
+    const handleResize = () => {
+      measureRunwayGeometry();
+      syncAll(true);
+    };
     window.addEventListener('resize', handleResize, { passive: true });
 
     return () => {
-      if (rafId) window.cancelAnimationFrame(rafId);
+      frameScheduler.removeTask(SOBRE_TASK_ID);
       observer.disconnect();
+      resizeObserver?.disconnect();
       unsubScroll();
       window.removeEventListener('resize', handleResize);
     };

@@ -1,4 +1,5 @@
 import type { ElementVisualState } from '../../motion/sobreTimeline';
+import { shouldEnableDynamicBlur } from '../../performance/performanceRuntime';
 
 /**
  * Aplica estado visual diretamente ao nó DOM sem provocar re-renders React.
@@ -15,13 +16,15 @@ export function applyVisualState(
   }
 ): void {
   if (!node) return;
+  const allowBlur = shouldEnableDynamicBlur();
+  const effectiveBlur = allowBlur ? state.blurPx : 0;
   const totalY = state.y + (options?.extraY ?? 0);
   const isAtRest =
     state.opacity >= 0.999 &&
     Math.abs(state.x) < 0.05 &&
     Math.abs(totalY) < 0.05 &&
     Math.abs(state.scale - 1) < 0.001 &&
-    state.blurPx < 0.1 &&
+    effectiveBlur < 0.1 &&
     !options?.clipPath;
 
   node.style.opacity = state.opacity <= 0.001 ? '0' : String(state.opacity);
@@ -39,9 +42,9 @@ export function applyVisualState(
     return;
   }
 
-  node.style.willChange = 'transform, opacity';
+  node.style.willChange = state.opacity > 0.001 ? 'transform, opacity' : 'auto';
   node.style.transform = `translate3d(${state.x.toFixed(2)}px, ${totalY.toFixed(2)}px, 0) scale(${state.scale.toFixed(4)})`;
-  node.style.filter = state.blurPx > 0.1 ? `blur(${state.blurPx.toFixed(2)}px)` : 'none';
+  node.style.filter = effectiveBlur > 0.1 ? `blur(${effectiveBlur.toFixed(2)}px)` : 'none';
   if (options?.clipPath !== undefined) {
     node.style.clipPath = options.clipPath;
   }
