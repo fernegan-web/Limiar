@@ -1,5 +1,6 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useMotionValue } from 'motion/react';
+import { useRouter } from '../../context/RouterContext';
 import {
   computeElementCollapse,
   computeSingularityFrame,
@@ -9,18 +10,29 @@ import {
 import {
   CinematicProgressDamper,
   HERO_TRAVERSAL_DAMPER_CONFIG,
+  TRAVERSAL_HANDOFF_PROGRESS,
+  canUnlockFreeNavigation,
   computeDeterministicTraversalProgress,
-  computeMobileTraversalSpanPx,
+  computeTraversalSpanPx,
   getEffectiveScrollY,
+  getLenisInstance,
   isNativeScrollOnly,
+  mapUnitProgressToTimeline,
+  notifyPhysicsScroll,
+  setGlobalTraversalPhase,
+  setGlobalTraversalSpanPx,
   shouldAcceptMobileViewportHeightUpdate,
   subscribePhysicsScroll,
   supportsCssScrollTimeline,
+  type TraversalPhase,
 } from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { ThresholdMagnetic } from '../../motion/ThresholdPrimitives';
 import type { Collection } from '../../types/commerce';
-import { CollectionsRevealSection } from '../collections/CollectionsRevealSection';
+import {
+  CollectionsRevealSection,
+  type CollectionsRevealDirection,
+} from '../collections/CollectionsRevealSection';
 import { EclipseSigil, LimiarStar } from '../ornaments/CybersigilismOrnaments';
 import { UltravioletButton } from '../ui/UltravioletButton';
 import { HeroThresholdComposition } from './HeroThresholdComposition';
@@ -42,12 +54,46 @@ interface HeroTraversalStageProps {
   totalSlides: number;
   collections: Collection[];
   onViewAllProducts: () => void;
+  onFreeNavigationChange?: (unlocked: boolean) => void;
   postCollectionsContent?: React.ReactNode;
 }
 
 interface MeasuredBox {
   centerX: number;
   centerY: number;
+}
+
+const HOME_UNLOCKED_SESSION_KEY = 'limiar_home_unlocked_v1';
+const VOID_VEIL_EXIT_MS = 420;
+const VOID_VEIL_REVERSE_RATE = -2.4;
+const INERTIA_SETTLE_MS = 150;
+const REVEAL_WATCHDOG_MS = 2400;
+
+function readInitialHomeUnlocked(isPopStateReturn: boolean): boolean {
+  if (typeof window === 'undefined') return false;
+  if (window.location.hash === '#todos-os-produtos') return true;
+  if (!isPopStateReturn) return false;
+  try {
+    if (window.sessionStorage.getItem(HOME_UNLOCKED_SESSION_KEY) === '1') {
+      return true;
+    }
+  } catch {
+    // noop
+  }
+  return window.scrollY > 24;
+}
+
+function writeHomeUnlockedSession(unlocked: boolean) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (unlocked) {
+      window.sessionStorage.setItem(HOME_UNLOCKED_SESSION_KEY, '1');
+    } else {
+      window.sessionStorage.removeItem(HOME_UNLOCKED_SESSION_KEY);
+    }
+  } catch {
+    // noop
+  }
 }
 
 function measureElementCenter(
@@ -100,19 +146,62 @@ export function HeroTraversalStage({
   totalSlides,
   collections,
   onViewAllProducts,
+  onFreeNavigationChange,
   postCollectionsContent,
 }: HeroTraversalStageProps) {
+  const { isPopStateReturn } = useRouter();
   const { portalRevealed } = useThresholdPointer();
   const trackRef = useRef<HTMLElement | null>(null);
   const leftColRef = useRef<HTMLDivElement | null>(null);
   const rightColRef = useRef<HTMLDivElement | null>(null);
   const compositionRef = useRef<HTMLDivElement | null>(null);
 
+  const [initialUnlocked] = useState<boolean>(() => readInitialHomeUnlocked(isPopStateReturn));
+
   const [isCssDriven, setIsCssDriven] = useState<boolean>(() => {
     return isNativeScrollOnly() && supportsCssScrollTimeline();
   });
   const isCssDrivenRef = useRef(isCssDriven);
   isCssDrivenRef.current = isCssDriven;
+
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  );
+  const prefersReducedMotionRef = useRef(prefersReducedMotion);
+  prefersReducedMotionRef.current = prefersReducedMotion;
+
+  const [phase, setPhase] = useState<TraversalPhase>(() => {
+    const init = initialUnlocked ? 'free-navigation' : 'hero-fixed';
+    setGlobalTraversalPhase(init);
+    return init;
+  });
+  const phaseRef = useRef<TraversalPhase>(phase);
+  phaseRef.current = phase;
+
+  const [revealDirection, setRevealDirection] = useState<CollectionsRevealDirection>(() =>
+    initialUnlocked ? 'settled' : 'hidden'
+  );
+  const revealDirectionRef = useRef<CollectionsRevealDirection>(revealDirection);
+  revealDirectionRef.current = revealDirection;
+
+  const [freeNavUnlocked, setFreeNavUnlocked] = useState<boolean>(() => initialUnlocked);
+  const freeNavUnlockedRef = useRef<boolean>(freeNavUnlocked);
+  freeNavUnlockedRef.current = freeNavUnlocked;
+
+  const onFreeNavigationChangeRef = useRef(onFreeNavigationChange);
+  onFreeNavigationChangeRef.current = onFreeNavigationChange;
+
+  const [initialSpanPx] = useState<number>(() => {
+    const vh = typeof window !== 'undefined' ? Math.max(window.innerHeight, 320) : 840;
+    const span = computeTraversalSpanPx({
+      stableViewportHeight: vh,
+      isNative: isNativeScrollOnly(),
+    });
+    setGlobalTraversalSpanPx(span);
+    return span;
+  });
 
   // Refs individuais para atração e distorção direcional sem re-render React
   const eyebrowRef = useRef<HTMLParagraphElement | null>(null);
@@ -131,31 +220,324 @@ export function HeroTraversalStage({
   const modelCollapseRef = useRef<HTMLDivElement | null>(null);
   const stickyStageRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
-  const voidVeilRef = useRef<HTMLDivElement | null>(null);
+  const voidVeilBuildRef = useRef<HTMLDivElement | null>(null);
+  const voidVeilExitRef = useRef<HTMLDivElement | null>(null);
   const heroOverlayGroupRef = useRef<HTMLDivElement | null>(null);
 
-  // Estado contínuo da rotação anti-horária da moldura
-  const progressRef = useRef(0);
+  // Estado contínuo da rotação anti-horária da moldura e ciclo sequencial
+  const progressRef = useRef(initialUnlocked ? TRAVERSAL_HANDOFF_PROGRESS : 0);
   const angleDegRef = useRef(0);
   const lastScrollYRef = useRef(0);
   const smoothedBoostRef = useRef(0);
   const wasAtRestRef = useRef(false);
-  const wasPastRevealRef = useRef(false);
   const ensureWreathLoopRef = useRef<(() => void) | null>(null);
   const resyncRef = useRef<(() => void) | null>(null);
   const metricsRef = useRef({
     sectionTopDocY: 0,
-    maxReachableScroll: 1,
-    collectionsOffsetPx: 0,
+    traversalSpanPx: initialSpanPx,
     stableWidth: 0,
     stableHeight: 0,
   });
+
+  // Controle da máquina sequencial e guarda de inércia pós-revelação
+  const revealCompletedRef = useRef<boolean>(initialUnlocked);
+  const touchActiveRef = useRef<boolean>(false);
+  const lastDownIntentTsRef = useRef<number>(0);
+  const lastScrollTsRef = useRef<number>(0);
+  const lastMeasuredScrollYRef = useRef<number>(
+    typeof window !== 'undefined' ? window.scrollY : 0
+  );
+  const unlockTimerRef = useRef<number>(0);
+  const stateCWatchdogRef = useRef<number>(0);
+  const voidVeilExitAnimRef = useRef<Animation | null>(null);
 
   const displacementRef = useRef<SVGFEDisplacementMapElement | null>(null);
   const rawId = useId();
   const warpFilterId = `limiar-gravity-warp-${rawId.replace(/:/g, '')}`;
 
-  const progressMv = useMotionValue(0);
+  const progressMv = useMotionValue(initialUnlocked ? TRAVERSAL_HANDOFF_PROGRESS : 0);
+
+  // Sincroniza estado inicial se retornou via popstate do navegador
+  useEffect(() => {
+    if (initialUnlocked) {
+      onFreeNavigationChangeRef.current?.(true);
+    }
+  }, [initialUnlocked]);
+
+  // Monitora preferência do usuário por movimento reduzido
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => {
+      setPrefersReducedMotion(mq.matches);
+      prefersReducedMotionRef.current = mq.matches;
+    };
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  const clearUnlockTimers = useCallback(() => {
+    if (unlockTimerRef.current) {
+      window.clearTimeout(unlockTimerRef.current);
+      unlockTimerRef.current = 0;
+    }
+    if (stateCWatchdogRef.current) {
+      window.clearTimeout(stateCWatchdogRef.current);
+      stateCWatchdogRef.current = 0;
+    }
+  }, []);
+
+  const driveVoidVeilExit = useCallback(
+    (mode: 'forward' | 'reverse' | 'reset-opaque' | 'reset-clear') => {
+      const el = voidVeilExitRef.current;
+      const cancelAnim = () => {
+        if (voidVeilExitAnimRef.current) {
+          try {
+            voidVeilExitAnimRef.current.onfinish = null;
+            voidVeilExitAnimRef.current.cancel();
+          } catch {
+            // noop
+          }
+          voidVeilExitAnimRef.current = null;
+        }
+      };
+
+      if (mode === 'reset-opaque') {
+        cancelAnim();
+        if (el) el.style.opacity = '1';
+        return;
+      }
+
+      if (mode === 'reset-clear') {
+        cancelAnim();
+        if (el) el.style.opacity = '0';
+        return;
+      }
+
+      if (!el) return;
+      const durationMs = prefersReducedMotionRef.current ? 120 : VOID_VEIL_EXIT_MS;
+
+      if (typeof el.animate !== 'function' || prefersReducedMotionRef.current) {
+        cancelAnim();
+        el.style.opacity = mode === 'forward' ? '0' : '1';
+        return;
+      }
+
+      if (voidVeilExitAnimRef.current) {
+        const anim = voidVeilExitAnimRef.current;
+        anim.playbackRate = mode === 'forward' ? 1 : VOID_VEIL_REVERSE_RATE;
+        anim.play();
+        anim.onfinish = () => {
+          const ct = Number(anim.currentTime ?? 0);
+          if (mode === 'forward' && ct >= durationMs - 6) {
+            el.style.opacity = '0';
+            cancelAnim();
+          } else if (mode === 'reverse' && ct <= 6) {
+            el.style.opacity = '1';
+            cancelAnim();
+          }
+        };
+        return;
+      }
+
+      const anim = el.animate(
+        [
+          { opacity: 1, offset: 0 },
+          { opacity: 0, offset: 1 },
+        ],
+        {
+          duration: durationMs,
+          fill: 'both',
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        }
+      );
+      anim.currentTime = mode === 'reverse' ? durationMs : 0;
+      anim.playbackRate = mode === 'forward' ? 1 : VOID_VEIL_REVERSE_RATE;
+      anim.onfinish = () => {
+        const ct = Number(anim.currentTime ?? 0);
+        if (mode === 'forward' && ct >= durationMs - 6) {
+          el.style.opacity = '0';
+          cancelAnim();
+        } else if (mode === 'reverse' && ct <= 6) {
+          el.style.opacity = '1';
+          cancelAnim();
+        }
+      };
+      voidVeilExitAnimRef.current = anim;
+    },
+    []
+  );
+
+  const commitFreeNavigationUnlock = useCallback(() => {
+    if (phaseRef.current !== 'collections-reveal') return;
+    clearUnlockTimers();
+
+    const lenis = getLenisInstance();
+    const { sectionTopDocY, traversalSpanPx } = metricsRef.current;
+    const targetSpanScrollY = sectionTopDocY + traversalSpanPx;
+
+    if (lenis && !isNativeScrollOnly()) {
+      lenis.stop();
+      lenis.start();
+      if (lenis.scroll > targetSpanScrollY + 1) {
+        lenis.scrollTo(targetSpanScrollY, { immediate: true, force: true });
+      }
+    }
+
+    phaseRef.current = 'free-navigation';
+    setPhase('free-navigation');
+    setGlobalTraversalPhase('free-navigation');
+
+    revealDirectionRef.current = 'settled';
+    setRevealDirection('settled');
+
+    freeNavUnlockedRef.current = true;
+    setFreeNavUnlocked(true);
+    writeHomeUnlockedSession(true);
+    onFreeNavigationChangeRef.current?.(true);
+
+    driveVoidVeilExit('reset-clear');
+
+    window.requestAnimationFrame(() => {
+      getLenisInstance()?.resize();
+      notifyPhysicsScroll();
+    });
+  }, [clearUnlockTimers, driveVoidVeilExit]);
+
+  const tryUnlockAfterSettle = useCallback(() => {
+    if (phaseRef.current !== 'collections-reveal') return;
+    if (unlockTimerRef.current) {
+      window.clearTimeout(unlockTimerRef.current);
+      unlockTimerRef.current = 0;
+    }
+
+    const nowMs = performance.now();
+    const settled = canUnlockFreeNavigation({
+      revealCompleted: revealCompletedRef.current,
+      touchActive: touchActiveRef.current,
+      lastDownwardIntentTs: lastDownIntentTsRef.current,
+      lastScrollTs: lastScrollTsRef.current,
+      nowMs,
+      settleMs: INERTIA_SETTLE_MS,
+    });
+
+    if (settled) {
+      commitFreeNavigationUnlock();
+      return;
+    }
+
+    const waitDown = Math.max(0, INERTIA_SETTLE_MS - (nowMs - lastDownIntentTsRef.current));
+    const waitScroll = Math.max(0, INERTIA_SETTLE_MS - (nowMs - lastScrollTsRef.current));
+    const delay = Math.max(36, waitDown, waitScroll);
+    unlockTimerRef.current = window.setTimeout(() => {
+      unlockTimerRef.current = 0;
+      tryUnlockAfterSettle();
+    }, delay);
+  }, [commitFreeNavigationUnlock]);
+
+  const handleRevealComplete = useCallback(() => {
+    if (phaseRef.current !== 'collections-reveal') return;
+    revealCompletedRef.current = true;
+    if (stateCWatchdogRef.current) {
+      window.clearTimeout(stateCWatchdogRef.current);
+      stateCWatchdogRef.current = 0;
+    }
+    tryUnlockAfterSettle();
+  }, [tryUnlockAfterSettle]);
+
+  const handleRevealReversed = useCallback(() => {
+    if (
+      phaseRef.current === 'hero-fixed' ||
+      phaseRef.current === 'traversal-active'
+    ) {
+      revealDirectionRef.current = 'hidden';
+      setRevealDirection('hidden');
+      driveVoidVeilExit('reset-opaque');
+    }
+  }, [driveVoidVeilExit]);
+
+  const handleViewAllProductsClick = useCallback(() => {
+    if (!freeNavUnlockedRef.current) {
+      clearUnlockTimers();
+      phaseRef.current = 'free-navigation';
+      setPhase('free-navigation');
+      setGlobalTraversalPhase('free-navigation');
+      revealDirectionRef.current = 'settled';
+      setRevealDirection('settled');
+      freeNavUnlockedRef.current = true;
+      setFreeNavUnlocked(true);
+      writeHomeUnlockedSession(true);
+      onFreeNavigationChangeRef.current?.(true);
+      driveVoidVeilExit('reset-clear');
+      window.requestAnimationFrame(() => {
+        getLenisInstance()?.resize();
+        onViewAllProducts();
+      });
+      return;
+    }
+    onViewAllProducts();
+  }, [clearUnlockTimers, driveVoidVeilExit, onViewAllProducts]);
+
+  // Rastreamento leve de intenção/inércia para descartar fling/wheel residual antes do Estado D
+  useEffect(() => {
+    if (typeof window === 'undefined' || freeNavUnlocked) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY > 0) {
+        lastDownIntentTsRef.current = performance.now();
+      }
+    };
+
+    const onTouchStart = () => {
+      touchActiveRef.current = true;
+    };
+
+    const onTouchEndOrCancel = () => {
+      touchActiveRef.current = false;
+      if (revealCompletedRef.current && phaseRef.current === 'collections-reveal') {
+        tryUnlockAfterSettle();
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === 'ArrowDown' ||
+        e.key === 'PageDown' ||
+        e.key === ' ' ||
+        e.key === 'End'
+      ) {
+        lastDownIntentTsRef.current = performance.now();
+      }
+    };
+
+    const onScrollEnd = () => {
+      if (revealCompletedRef.current && phaseRef.current === 'collections-reveal') {
+        lastScrollTsRef.current = performance.now() - INERTIA_SETTLE_MS;
+        lastDownIntentTsRef.current = Math.min(
+          lastDownIntentTsRef.current,
+          performance.now() - INERTIA_SETTLE_MS
+        );
+        tryUnlockAfterSettle();
+      }
+    };
+
+    window.addEventListener('wheel', onWheel, { passive: true });
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchend', onTouchEndOrCancel, { passive: true });
+    window.addEventListener('touchcancel', onTouchEndOrCancel, { passive: true });
+    window.addEventListener('keydown', onKeyDown, { passive: true });
+    window.addEventListener('scrollend', onScrollEnd, { passive: true });
+
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchend', onTouchEndOrCancel);
+      window.removeEventListener('touchcancel', onTouchEndOrCancel);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('scrollend', onScrollEnd);
+    };
+  }, [freeNavUnlocked, tryUnlockAfterSettle]);
 
   useEffect(() => {
     const restConfig: CollapseVectorConfig = {
@@ -167,16 +549,88 @@ export function HeroTraversalStage({
       resistance: 1,
     };
 
+    const enterCollectionsReveal = () => {
+      if (phaseRef.current === 'collections-reveal' || phaseRef.current === 'free-navigation') {
+        return;
+      }
+      clearUnlockTimers();
+      revealCompletedRef.current = false;
+      phaseRef.current = 'collections-reveal';
+      setPhase('collections-reveal');
+      setGlobalTraversalPhase('collections-reveal');
+
+      revealDirectionRef.current = 'forward';
+      setRevealDirection('forward');
+
+      driveVoidVeilExit('forward');
+
+      stateCWatchdogRef.current = window.setTimeout(() => {
+        stateCWatchdogRef.current = 0;
+        if (phaseRef.current === 'collections-reveal' && !revealCompletedRef.current) {
+          revealCompletedRef.current = true;
+          tryUnlockAfterSettle();
+        }
+      }, REVEAL_WATCHDOG_MS);
+    };
+
+    const reverseBackToTraversal = (toRest: boolean) => {
+      const prevPhase = phaseRef.current;
+      clearUnlockTimers();
+      revealCompletedRef.current = false;
+
+      if (freeNavUnlockedRef.current) {
+        freeNavUnlockedRef.current = false;
+        setFreeNavUnlocked(false);
+        writeHomeUnlockedSession(false);
+        onFreeNavigationChangeRef.current?.(false);
+        window.requestAnimationFrame(() => {
+          getLenisInstance()?.resize();
+        });
+      }
+
+      const nextPhase: TraversalPhase = toRest ? 'hero-fixed' : 'traversal-active';
+      if (phaseRef.current !== nextPhase) {
+        phaseRef.current = nextPhase;
+        setPhase(nextPhase);
+        setGlobalTraversalPhase(nextPhase);
+      }
+
+      if (
+        prevPhase === 'collections-reveal' ||
+        prevPhase === 'free-navigation' ||
+        revealDirectionRef.current === 'forward' ||
+        revealDirectionRef.current === 'settled'
+      ) {
+        if (toRest) {
+          revealDirectionRef.current = 'hidden';
+          setRevealDirection('hidden');
+          driveVoidVeilExit('reset-opaque');
+        } else {
+          revealDirectionRef.current = 'reverse';
+          setRevealDirection('reverse');
+          driveVoidVeilExit('reverse');
+        }
+      } else if (toRest && revealDirectionRef.current !== 'hidden') {
+        revealDirectionRef.current = 'hidden';
+        setRevealDirection('hidden');
+        driveVoidVeilExit('reset-opaque');
+      }
+    };
+
     const applyFrame = (p: number) => {
       progressMv.set(p);
       progressRef.current = p;
 
+      if (trackRef.current) {
+        trackRef.current.dataset.traversalProgress = p.toFixed(3);
+      }
+
       if (isCssDrivenRef.current) {
-        // No modo CSS Scroll-driven, o compositor nativo gerencia transforms, opacidades e keyframes
+        // No modo CSS Scroll-driven, o compositor nativo gerencia transforms, opacidades e keyframes do Estado B
         return;
       }
 
-      if (p < 0.78) {
+      if (p < TRAVERSAL_HANDOFF_PROGRESS + 0.04) {
         ensureWreathLoopRef.current?.();
       }
 
@@ -189,17 +643,15 @@ export function HeroTraversalStage({
 
       if (trackRef.current) {
         trackRef.current.dataset.traversalStage = frame.stage;
-        trackRef.current.dataset.traversalProgress = p.toFixed(3);
       }
 
       if (scrollHintRef.current) {
-        const hintOpacity = p < 0.08 ? Math.max(0, 1 - p / 0.08) : 0;
+        const hintOpacity = p <= 0.0001 ? 1 : p < 0.16 ? Math.max(0, 1 - (p - 0.1) / 0.06) : 0;
         scrollHintRef.current.style.opacity = String(hintOpacity.toFixed(3));
       }
 
-      // Fast-path em repouso: evita leituras de layout e escritas redundantes no DOM
-      if (p <= 0.1) {
-        wasPastRevealRef.current = false;
+      // Fast-path em repouso absoluto (p <= 0): zero zona morta depois de p > 0
+      if (p <= 0.0001) {
         if (stickyStageRef.current && stickyStageRef.current.style.visibility !== 'visible') {
           stickyStageRef.current.style.visibility = 'visible';
         }
@@ -208,13 +660,13 @@ export function HeroTraversalStage({
           if (displacementRef.current) {
             displacementRef.current.setAttribute('scale', '0');
           }
-          applyCollapseStyle(eyebrowRef.current, p, restConfig);
-          applyCollapseStyle(titleRef.current, p, restConfig);
-          applyCollapseStyle(descRef.current, p, restConfig);
-          applyCollapseStyle(ctaRef.current, p, restConfig);
-          applyCollapseStyle(counterRef.current, p, restConfig);
-          applyCollapseStyle(railRef.current, p, restConfig);
-          applyCollapseStyle(modelCollapseRef.current, p, restConfig);
+          applyCollapseStyle(eyebrowRef.current, 0, restConfig);
+          applyCollapseStyle(titleRef.current, 0, restConfig);
+          applyCollapseStyle(descRef.current, 0, restConfig);
+          applyCollapseStyle(ctaRef.current, 0, restConfig);
+          applyCollapseStyle(counterRef.current, 0, restConfig);
+          applyCollapseStyle(railRef.current, 0, restConfig);
+          applyCollapseStyle(modelCollapseRef.current, 0, restConfig);
 
           if (wreathTransformRef.current) {
             wreathTransformRef.current.style.transform = `translate3d(0px, 0px, 0) scale(${frame.wreathScale})`;
@@ -236,8 +688,8 @@ export function HeroTraversalStage({
             heroOverlayGroupRef.current.style.opacity = '1';
             heroOverlayGroupRef.current.style.pointerEvents = 'auto';
           }
-          if (voidVeilRef.current) {
-            voidVeilRef.current.style.opacity = '0';
+          if (voidVeilBuildRef.current) {
+            voidVeilBuildRef.current.style.opacity = '0';
           }
         }
         return;
@@ -245,18 +697,11 @@ export function HeroTraversalStage({
 
       wasAtRestRef.current = false;
 
-      if (p >= 1) {
-        if (wasPastRevealRef.current) {
-          if (stickyStageRef.current && stickyStageRef.current.style.visibility !== 'hidden') {
-            stickyStageRef.current.style.visibility = 'hidden';
-          }
-          return;
-        }
-        wasPastRevealRef.current = true;
-      } else {
-        wasPastRevealRef.current = false;
-        if (stickyStageRef.current && stickyStageRef.current.style.visibility !== 'visible') {
-          stickyStageRef.current.style.visibility = 'visible';
+      const curPhase = phaseRef.current;
+      if (stickyStageRef.current) {
+        const nextVis = curPhase === 'free-navigation' ? 'hidden' : 'visible';
+        if (stickyStageRef.current.style.visibility !== nextVis) {
+          stickyStageRef.current.style.visibility = nextVis;
         }
       }
 
@@ -383,7 +828,7 @@ export function HeroTraversalStage({
         wreathTransformRef.current.style.transform = `translate3d(${shiftX.toFixed(
           2
         )}px, ${shiftY.toFixed(2)}px, 0) scale(${frame.wreathScale})`;
-        wreathTransformRef.current.style.opacity = p >= 0.72 ? '0' : '1';
+        wreathTransformRef.current.style.opacity = p >= 0.715 ? '0' : '1';
       }
 
       if (wreathBlurRef.current) {
@@ -412,17 +857,18 @@ export function HeroTraversalStage({
           p < 0.28 && frame.heroVisibility > 0.5 ? 'auto' : 'none';
       }
 
-      if (voidVeilRef.current) {
-        voidVeilRef.current.style.opacity = String(frame.voidVeilOpacity);
-      }
-
-      if (stickyStageRef.current) {
-        stickyStageRef.current.style.visibility = p >= 1 ? 'hidden' : 'visible';
+      // Véu externo constrói 0 -> 1 no final do Estado B (e permanece 1 atrás do voidVeilExit no Estado C)
+      if (voidVeilBuildRef.current) {
+        const buildOpacity = smootherstep(0.55, 0.67, p);
+        voidVeilBuildRef.current.style.opacity = String(buildOpacity.toFixed(4));
       }
     };
 
     let nativeMode = isNativeScrollOnly();
     const damper = new CinematicProgressDamper(HERO_TRAVERSAL_DAMPER_CONFIG);
+    if (initialUnlocked) {
+      damper.snap(1);
+    }
     let damperRafId = 0;
     let lastTickMs = 0;
 
@@ -442,63 +888,74 @@ export function HeroTraversalStage({
 
       const rect = trackRef.current.getBoundingClientRect();
       const sectionTopDocY = rect.top + getEffectiveScrollY();
-      const maxReachableScroll = Math.max(
-        1,
-        document.documentElement.scrollHeight - stableHeight - sectionTopDocY
-      );
-
-      let collectionsOffsetPx = prev.collectionsOffsetPx;
-      if (shouldUpdateStableVh || collectionsOffsetPx <= 0) {
-        collectionsOffsetPx = spacerRef.current
-          ? spacerRef.current.offsetTop + spacerRef.current.offsetHeight
-          : stableHeight * 1.8;
-      }
+      const traversalSpanPx = computeTraversalSpanPx({
+        stableViewportHeight: stableHeight || winH,
+        isNative: nativeMode,
+      });
+      setGlobalTraversalSpanPx(traversalSpanPx);
 
       metricsRef.current = {
         sectionTopDocY,
-        maxReachableScroll,
-        collectionsOffsetPx,
+        traversalSpanPx,
         stableWidth,
         stableHeight,
       };
 
+      if (spacerRef.current) {
+        spacerRef.current.style.height = `${traversalSpanPx}px`;
+      }
+
       if (trackRef.current) {
-        const effectiveSpanPx = computeMobileTraversalSpanPx({
-          stableViewportHeight: stableHeight || window.innerHeight,
-          collectionsOffsetPx,
-          maxReachableScrollPx: maxReachableScroll,
-        });
         trackRef.current.style.setProperty(
           '--limiar-traversal-span',
-          `${effectiveSpanPx}px`
+          `${traversalSpanPx}px`
         );
       }
     };
 
-    const computeScrollProgress = () => {
+    const readScrolledPastTop = () => {
       if (typeof window === 'undefined') return 0;
-      const {
-        sectionTopDocY,
-        maxReachableScroll,
-        collectionsOffsetPx,
-        stableHeight,
-      } = metricsRef.current;
-      const scrolledPastTop = Math.max(0, getEffectiveScrollY() - sectionTopDocY);
+      return Math.max(0, getEffectiveScrollY() - metricsRef.current.sectionTopDocY);
+    };
 
-      if (nativeMode) {
-        const effectiveSpanPx = computeMobileTraversalSpanPx({
-          stableViewportHeight: stableHeight || window.innerHeight,
-          collectionsOffsetPx,
-          maxReachableScrollPx: maxReachableScroll,
-        });
-        return computeDeterministicTraversalProgress(scrolledPastTop, effectiveSpanPx);
+    const evaluatePhaseTransition = (visualU: number, scrolledPastTop: number) => {
+      const S = metricsRef.current.traversalSpanPx;
+      const curPhase = phaseRef.current;
+
+      if (curPhase === 'free-navigation') {
+        if (scrolledPastTop < S - 4) {
+          reverseBackToTraversal(scrolledPastTop <= 1 && visualU <= 0.002);
+        }
+        return;
       }
 
-      const vh = Math.max(window.innerHeight, 320);
-      const isMob = window.innerWidth < 768;
-      const baseSpanPx = vh * (isMob ? 2.12 : 2.4);
-      const effectiveSpanPx = Math.min(baseSpanPx, maxReachableScroll / 0.94);
-      return Math.min(1, Math.max(0, scrolledPastTop / Math.max(1, effectiveSpanPx)));
+      if (curPhase === 'collections-reveal') {
+        if (scrolledPastTop < S - 2) {
+          reverseBackToTraversal(scrolledPastTop <= 1 && visualU <= 0.002);
+        }
+        return;
+      }
+
+      // Estados A & B
+      const atBoundary =
+        (nativeMode || prefersReducedMotionRef.current)
+          ? scrolledPastTop >= S - 2
+          : visualU >= 0.992 && scrolledPastTop >= S - 3;
+
+      if (atBoundary) {
+        enterCollectionsReveal();
+        return;
+      }
+
+      if (scrolledPastTop <= 1 && visualU <= 0.002) {
+        if (curPhase !== 'hero-fixed') {
+          reverseBackToTraversal(true);
+        }
+      } else if (curPhase !== 'traversal-active') {
+        phaseRef.current = 'traversal-active';
+        setPhase('traversal-active');
+        setGlobalTraversalPhase('traversal-active');
+      }
     };
 
     const stepDamper = (now: number) => {
@@ -509,8 +966,12 @@ export function HeroTraversalStage({
       }
       const dtSec = lastTickMs > 0 ? (now - lastTickMs) / 1000 : 1 / 60;
       lastTickMs = now;
-      const smoothedP = damper.step(dtSec);
-      applyFrame(smoothedP);
+      const smoothedU = damper.step(dtSec);
+      const timelineP = mapUnitProgressToTimeline(smoothedU);
+      applyFrame(timelineP);
+
+      evaluatePhaseTransition(smoothedU, readScrolledPastTop());
+
       if (!damper.isSettled()) {
         damperRafId = window.requestAnimationFrame(stepDamper);
       } else {
@@ -520,24 +981,39 @@ export function HeroTraversalStage({
     };
 
     const syncFromScroll = () => {
-      const targetP = computeScrollProgress();
-      if (nativeMode) {
-        if (isCssDrivenRef.current) {
-          // No modo CSS Scroll-driven nativo, o compositor cuida da sincronização direta 1:1 sem overhead JS
-          return;
-        }
+      const currentY = getEffectiveScrollY();
+      const prevY = lastMeasuredScrollYRef.current;
+      const nowMs = performance.now();
+      lastScrollTsRef.current = nowMs;
+      if (currentY > prevY + 0.5) {
+        lastDownIntentTsRef.current = nowMs;
+      }
+      lastMeasuredScrollYRef.current = currentY;
+
+      const scrolledPastTop = readScrolledPastTop();
+      const targetU = computeDeterministicTraversalProgress(
+        scrolledPastTop,
+        metricsRef.current.traversalSpanPx
+      );
+
+      if (nativeMode || prefersReducedMotionRef.current) {
         if (damperRafId) {
           window.cancelAnimationFrame(damperRafId);
           damperRafId = 0;
           lastTickMs = 0;
         }
-        // Mobile fallback determinístico para navegadores incompatíveis
-        const directP = damper.snap(targetP);
-        applyFrame(directP);
+        const directU = damper.snap(targetU);
+        const timelineP = mapUnitProgressToTimeline(directU);
+        applyFrame(timelineP);
+        evaluatePhaseTransition(directU, scrolledPastTop);
         return;
       }
 
-      damper.setTarget(targetP);
+      // Desktop com mouse/trackpad: amortecimento progressivo no eixo [0..1]
+      damper.setTarget(targetU);
+      const currentU = damper.getValue();
+      evaluatePhaseTransition(currentU, scrolledPastTop);
+
       if (!damper.isSettled() && !damperRafId && document.visibilityState !== 'hidden') {
         lastTickMs = performance.now();
         damperRafId = window.requestAnimationFrame(stepDamper);
@@ -545,8 +1021,18 @@ export function HeroTraversalStage({
     };
 
     const snapFromLayout = () => {
-      const snapped = damper.snap(computeScrollProgress());
-      applyFrame(snapped);
+      const scrolledPastTop = readScrolledPastTop();
+      const targetU = computeDeterministicTraversalProgress(
+        scrolledPastTop,
+        metricsRef.current.traversalSpanPx
+      );
+      const snappedU = damper.snap(targetU);
+      applyFrame(mapUnitProgressToTimeline(snappedU));
+      if (!initialUnlocked) {
+        evaluatePhaseTransition(snappedU, scrolledPastTop);
+      } else if (scrolledPastTop < metricsRef.current.traversalSpanPx - 4) {
+        evaluatePhaseTransition(snappedU, scrolledPastTop);
+      }
     };
 
     resyncRef.current = () => {
@@ -561,7 +1047,6 @@ export function HeroTraversalStage({
         lastTickMs = 0;
       }
       wasAtRestRef.current = false;
-      wasPastRevealRef.current = false;
       measureMetrics();
       snapFromLayout();
     };
@@ -591,7 +1076,6 @@ export function HeroTraversalStage({
 
       if (significantChange) {
         wasAtRestRef.current = false;
-        wasPastRevealRef.current = false;
       }
 
       measureMetrics();
@@ -617,13 +1101,26 @@ export function HeroTraversalStage({
     if (typeof ResizeObserver !== 'undefined' && trackRef.current) {
       resizeObserver = new ResizeObserver(() => {
         measureMetrics();
-        snapFromLayout();
+        if (phaseRef.current !== 'collections-reveal') {
+          snapFromLayout();
+        }
       });
       resizeObserver.observe(trackRef.current);
     }
 
     return () => {
       resyncRef.current = null;
+      setGlobalTraversalPhase('free-navigation');
+      clearUnlockTimers();
+      if (voidVeilExitAnimRef.current) {
+        try {
+          voidVeilExitAnimRef.current.onfinish = null;
+          voidVeilExitAnimRef.current.cancel();
+        } catch {
+          // noop
+        }
+        voidVeilExitAnimRef.current = null;
+      }
       if (damperRafId) window.cancelAnimationFrame(damperRafId);
       unsubPhysics();
       window.removeEventListener('resize', onResize);
@@ -631,16 +1128,23 @@ export function HeroTraversalStage({
       window.visualViewport?.removeEventListener('resize', onResize);
       resizeObserver?.disconnect();
     };
-  }, [progressMv, warpFilterId]);
+  }, [clearUnlockTimers, driveVoidVeilExit, initialUnlocked, progressMv, warpFilterId]);
 
   useEffect(() => {
     if (!portalRevealed) return;
     resyncRef.current?.();
   }, [portalRevealed]);
 
-  // Rotação contínua exclusivamente anti-horária (suspende durante intro, aba oculta ou após p >= 0.78; em modo CSS-driven roda via CSS nativo)
+  // Rotação contínua exclusivamente anti-horária (suspende durante intro, aba oculta ou após p >= 0.72; em modo CSS-driven roda via CSS nativo)
   useEffect(() => {
-    if (typeof window === 'undefined' || !portalRevealed || isCssDriven) return;
+    if (
+      typeof window === 'undefined' ||
+      !portalRevealed ||
+      isCssDriven ||
+      prefersReducedMotion
+    ) {
+      return;
+    }
 
     let rafId = 0;
     let lastTime = performance.now();
@@ -653,8 +1157,11 @@ export function HeroTraversalStage({
 
     const shouldRun = () =>
       !isCssDrivenRef.current &&
+      !prefersReducedMotionRef.current &&
       (typeof document === 'undefined' || document.visibilityState !== 'hidden') &&
-      progressRef.current < 0.78;
+      phaseRef.current !== 'collections-reveal' &&
+      phaseRef.current !== 'free-navigation' &&
+      progressRef.current < TRAVERSAL_HANDOFF_PROGRESS;
 
     const tick = (now: number) => {
       if (!shouldRun()) {
@@ -723,7 +1230,7 @@ export function HeroTraversalStage({
         window.cancelAnimationFrame(rafId);
       }
     };
-  }, [portalRevealed, isCssDriven]);
+  }, [portalRevealed, isCssDriven, prefersReducedMotion, phase]);
 
   const nativeMode = isNativeScrollOnly();
 
@@ -731,8 +1238,15 @@ export function HeroTraversalStage({
     <section
       ref={trackRef}
       data-testid="hero-traversal-track"
-      data-traversal-stage="repouso"
-      data-traversal-progress="0.000"
+      data-traversal-phase={phase}
+      data-traversal-stage={
+        phase === 'hero-fixed'
+          ? 'repouso'
+          : phase === 'traversal-active'
+          ? 'colapso'
+          : 'revelacao'
+      }
+      data-traversal-progress={initialUnlocked ? '0.720' : '0.000'}
       data-traversal-mode={
         isCssDriven ? 'css-driven' : nativeMode ? 'js-fallback' : 'desktop'
       }
@@ -775,9 +1289,9 @@ export function HeroTraversalStage({
         {/* CAMADA DE TRAVESSIA: HERO + SINGULARIDADE PROCEDURAL */}
         <div
           ref={heroOverlayGroupRef}
-          className="relative z-10 w-full h-full md:h-auto flex items-center pointer-events-auto"
+          className="relative z-10 w-full h-full md:h-auto flex items-center pointer-events-auto limiar-hero-overlay-group"
         >
-          <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-12 sm:pt-14 pb-6 sm:pb-10 w-full">
+          <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-[76px] sm:pt-24 pb-6 sm:pb-10 w-full">
             <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-4 sm:gap-6">
               {/* Coluna Esquerda: Texto & CTA */}
               <div
@@ -903,24 +1417,33 @@ export function HeroTraversalStage({
           <span className="w-[1px] h-5 bg-gradient-to-b from-[var(--text-muted)] to-transparent" />
         </div>
 
-        {/* VÉU DE ESCURIDÃO DO HORIZONTE DE EVENTOS (55%–78%) */}
+        {/* VÉU DE ESCURIDÃO ANINHADO:
+            - Externo (build): 0 -> 1 no final do Estado B (via view-timeline no mobile ou applyFrame no desktop)
+            - Interno (exit): 1 no Estado B, abre gradualmente 1 -> 0 no Estado C (reversível via WAAPI) */}
         <div
-          ref={voidVeilRef}
+          ref={voidVeilBuildRef}
           aria-hidden="true"
-          data-testid="horizon-void-veil"
+          data-testid="horizon-void-veil-build"
           className="pointer-events-none absolute inset-0 z-[24] opacity-0"
-          style={{
-            background:
-              'radial-gradient(circle at 50% 50%, #030304 0%, #050507 65%, #070709 100%)',
-          }}
-        />
+        >
+          <div
+            ref={voidVeilExitRef}
+            data-testid="horizon-void-veil"
+            className="w-full h-full opacity-100"
+            style={{
+              background:
+                'radial-gradient(circle at 50% 50%, #030304 0%, #050507 65%, #070709 100%)',
+            }}
+          />
+        </div>
       </div>
 
-      {/* Espaço da travessia gravitacional antes da entrada sequencial das coleções */}
+      {/* Espaço exato S da travessia gravitacional antes da entrada sequencial das coleções */}
       <div
         ref={spacerRef}
         aria-hidden="true"
-        className="h-[80vh] md:h-[104vh] pointer-events-none"
+        style={{ height: `${initialSpanPx}px` }}
+        className="pointer-events-none"
       />
 
       {/* REVELAÇÃO SEQUENCIAL DAS COLEÇÕES + CONTEÚDO UNIFICADO DA HOMEPAGE */}
@@ -928,10 +1451,16 @@ export function HeroTraversalStage({
         collections={collections}
         progressMv={progressMv}
         isCssDriven={isCssDriven}
-        onViewAllProducts={onViewAllProducts}
+        revealDirection={revealDirection}
+        freeNavUnlocked={freeNavUnlocked}
+        reducedMotion={prefersReducedMotion}
+        onRevealComplete={handleRevealComplete}
+        onRevealReversed={handleRevealReversed}
+        onViewAllProducts={handleViewAllProductsClick}
       >
         {postCollectionsContent}
       </CollectionsRevealSection>
     </section>
   );
 }
+

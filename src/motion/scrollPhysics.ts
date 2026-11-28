@@ -97,6 +97,112 @@ export function shouldAcceptMobileViewportHeightUpdate(
   return Math.abs(nextHeight - prevHeight) > 160;
 }
 
+export type TraversalPhase =
+  | 'hero-fixed'
+  | 'traversal-active'
+  | 'collections-reveal'
+  | 'free-navigation';
+
+export type TraversalPhaseListener = (phase: TraversalPhase) => void;
+
+let currentTraversalPhase: TraversalPhase = 'hero-fixed';
+let currentTraversalSpanPx = 0;
+const traversalPhaseListeners = new Set<TraversalPhaseListener>();
+
+export function setGlobalTraversalPhase(phase: TraversalPhase): void {
+  if (currentTraversalPhase !== phase) {
+    currentTraversalPhase = phase;
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.traversalPhase = phase;
+    }
+    traversalPhaseListeners.forEach((listener) => {
+      listener(phase);
+    });
+  }
+}
+
+export function getGlobalTraversalPhase(): TraversalPhase {
+  return currentTraversalPhase;
+}
+
+export function subscribeTraversalPhase(listener: TraversalPhaseListener): () => void {
+  traversalPhaseListeners.add(listener);
+  return () => {
+    traversalPhaseListeners.delete(listener);
+  };
+}
+
+export function setGlobalTraversalSpanPx(spanPx: number): void {
+  currentTraversalSpanPx = spanPx;
+}
+
+export function getGlobalTraversalSpanPx(): number {
+  if (currentTraversalSpanPx > 0) return currentTraversalSpanPx;
+  if (typeof window !== 'undefined') {
+    return computeTraversalSpanPx({
+      stableViewportHeight: window.innerHeight,
+      isNative: isNativeScrollOnly(),
+    });
+  }
+  return 840;
+}
+
+export const TRAVERSAL_HANDOFF_PROGRESS = 0.72;
+export const TRAVERSAL_ACTIVE_START_PROGRESS = 0.1;
+
+export function computeTraversalSpanPx(params: {
+  stableViewportHeight: number;
+  isNative: boolean;
+}): number {
+  const safeVh = Math.max(params.stableViewportHeight, 320);
+  if (params.isNative) {
+    return Math.round(clamp(safeVh * 1.15, 580, 960));
+  }
+  return Math.round(clamp(safeVh * 1.25, 720, 1140));
+}
+
+export function mapUnitProgressToTimeline(unitProgress: number): number {
+  const u = clamp(unitProgress, 0, 1);
+  if (u <= 0) return 0;
+  return Number(
+    (
+      TRAVERSAL_ACTIVE_START_PROGRESS +
+      u * (TRAVERSAL_HANDOFF_PROGRESS - TRAVERSAL_ACTIVE_START_PROGRESS)
+    ).toFixed(5)
+  );
+}
+
+export function mapTraversalSpanToTimelineProgress(
+  scrolledPastTopPx: number,
+  effectiveSpanPx: number
+): number {
+  const u = computeDeterministicTraversalProgress(scrolledPastTopPx, effectiveSpanPx);
+  return mapUnitProgressToTimeline(u);
+}
+
+export interface FreeNavigationUnlockInput {
+  revealCompleted: boolean;
+  touchActive: boolean;
+  lastDownwardIntentTs: number;
+  lastScrollTs: number;
+  nowMs: number;
+  settleMs?: number;
+}
+
+export function canUnlockFreeNavigation({
+  revealCompleted,
+  touchActive,
+  lastDownwardIntentTs,
+  lastScrollTs,
+  nowMs,
+  settleMs = 150,
+}: FreeNavigationUnlockInput): boolean {
+  if (!revealCompleted || touchActive) return false;
+  if (nowMs - lastDownwardIntentTs < settleMs) return false;
+  if (nowMs - lastScrollTs < settleMs) return false;
+  return true;
+}
+
 export function computeMobileTraversalSpanPx({
   stableViewportHeight,
   collectionsOffsetPx,
@@ -224,10 +330,10 @@ export interface ProgressDamperConfig {
 }
 
 export const HERO_TRAVERSAL_DAMPER_CONFIG: ProgressDamperConfig = {
-  stiffness: 24,
-  damping: 10.0,
-  maxSpeedPerSec: 1.25,
-  softCatchupThreshold: 0.32,
+  stiffness: 42,
+  damping: 13.5,
+  maxSpeedPerSec: 1.55,
+  softCatchupThreshold: 0.3,
 };
 
 const EPSILON_POS = 0.00035;
@@ -246,6 +352,11 @@ export class CinematicProgressDamper {
 
   public setTarget(nextTarget: number): void {
     const clamped = clamp(nextTarget, 0, 1);
+    const dirToTarget = clamped - this.visualP;
+    // Ao inverter a direção da rolagem, descarta imediatamente o momento residual no sentido oposto
+    if (dirToTarget * this.velocityP < 0) {
+      this.velocityP = 0;
+    }
     if (Math.abs(clamped - this.targetP) > 1e-6) {
       this.targetP = clamped;
       this.settled = false;

@@ -11,6 +11,7 @@ import { LimiarLogo } from '../ui/LimiarLogo';
 interface NavbarProps {
   onOpenSearch: () => void;
   onOpenAccount: () => void;
+  overlay?: boolean;
 }
 
 const NAV_LINKS = [
@@ -20,7 +21,7 @@ const NAV_LINKS = [
   { label: 'Contato', href: '/contato' },
 ] as const;
 
-export function Navbar({ onOpenSearch, onOpenAccount }: NavbarProps) {
+export function Navbar({ onOpenSearch, onOpenAccount, overlay = false }: NavbarProps) {
   const { pathname, navigate } = useRouter();
   const { theme, toggleTheme } = useTheme();
   const { isAuthenticated, member } = useAuth();
@@ -34,7 +35,11 @@ export function Navbar({ onOpenSearch, onOpenAccount }: NavbarProps) {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full transition-colors duration-300">
+    <header
+      className={`${
+        overlay ? 'fixed top-0 left-0 right-0' : 'sticky top-0'
+      } z-50 w-full transition-colors duration-300`}
+    >
       <div className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-3 pb-2">
         <div className="flex items-center justify-between gap-4">
           {/* Zona 1: Logo Original */}

@@ -189,7 +189,8 @@ export function computeSingularityFrame(progress: number, isMobile = false): Sin
   const p = clamp(progress, 0, 1);
   const stage = resolveTraversalStage(p);
 
-  const wake = rangeProgress(p, 0.1, 0.3);
+  const rawWake = clamp((p - 0.1) / 0.2, 0, 1);
+  const wake = rawWake * (2 - rawWake);
   const collapse = smootherstep(0.3, 0.55, p);
   const horizon = smootherstep(0.55, 0.69, p);
   const exitDark = smootherstep(0.73, 0.85, p);
@@ -205,7 +206,8 @@ export function computeSingularityFrame(progress: number, isMobile = false): Sin
 
   // Moldura tribal é a camada mais externa/próxima: acelera mais rápido e sai da viewport antes do buraco negro.
   // No mobile, a escala é limitada a ~5.4x pois a abertura central (~50% diâmetro) já ultrapassa os cantos da tela em p ≈ 0.58.
-  const wreathWake = smootherstep(0.1, 0.34, p);
+  const rawWreathWake = clamp((p - 0.1) / 0.24, 0, 1);
+  const wreathWake = rawWreathWake * (2 - rawWreathWake);
   const wreathSurge = smootherstep(0.28, 0.58, p);
   const wreathExit = smootherstep(0.5, 0.72, p);
   const wreathScale = isMobile

@@ -5,6 +5,7 @@ interface RouterContextValue {
   pathname: string;
   search: string;
   hash: string;
+  isPopStateReturn: boolean;
   navigate: (to: string) => void;
   commitScroll: () => void;
 }
@@ -24,16 +25,20 @@ function readLocation() {
 
 export function RouterProvider({ children }: { children: React.ReactNode }) {
   const [loc, setLoc] = useState(readLocation);
+  const [isPopStateReturn, setIsPopStateReturn] = useState(false);
+  const skipNextResetOnPopRef = React.useRef(false);
 
   useEffect(() => {
     const handlePopState = () => {
+      skipNextResetOnPopRef.current = true;
+      setIsPopStateReturn(true);
       setLoc(readLocation());
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const scrollToTarget = useCallback((hashValue: string) => {
+  const scrollToTarget = useCallback((hashValue: string, allowTopReset = true) => {
     if (hashValue) {
       window.requestAnimationFrame(() => {
         const el = document.getElementById(hashValue);
@@ -41,7 +46,7 @@ export function RouterProvider({ children }: { children: React.ReactNode }) {
           scrollToWithPhysics(el, { duration: 1.05 });
         }
       });
-    } else {
+    } else if (allowTopReset) {
       scrollToWithPhysics(0, { immediate: true });
     }
   }, []);
@@ -56,6 +61,8 @@ export function RouterProvider({ children }: { children: React.ReactNode }) {
       const fullUrl = `${normalizedPath}${normalizedSearch}${normalizedHash ? `#${normalizedHash}` : ''}`;
 
       const samePathname = window.location.pathname === normalizedPath;
+      skipNextResetOnPopRef.current = false;
+      setIsPopStateReturn(false);
 
       if (
         !samePathname ||
@@ -67,19 +74,28 @@ export function RouterProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (samePathname) {
-        scrollToTarget(normalizedHash);
+        scrollToTarget(normalizedHash, true);
       }
     },
     [scrollToTarget]
   );
 
   const commitScroll = useCallback(() => {
-    scrollToTarget(loc.hash);
+    const wasPop = skipNextResetOnPopRef.current;
+    skipNextResetOnPopRef.current = false;
+    scrollToTarget(loc.hash, !wasPop);
   }, [loc.hash, scrollToTarget]);
 
   return (
     <RouterContext.Provider
-      value={{ pathname: loc.pathname, search: loc.search, hash: loc.hash, navigate, commitScroll }}
+      value={{
+        pathname: loc.pathname,
+        search: loc.search,
+        hash: loc.hash,
+        isPopStateReturn,
+        navigate,
+        commitScroll,
+      }}
     >
       {children}
     </RouterContext.Provider>

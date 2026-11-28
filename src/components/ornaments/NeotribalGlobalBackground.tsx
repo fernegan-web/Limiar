@@ -2,33 +2,49 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   motion,
   useMotionValue,
-  useScroll,
   useSpring,
   useTransform,
 } from 'motion/react';
-import { isNativeScrollOnly } from '../../motion/scrollPhysics';
+import { useRouter } from '../../context/RouterContext';
+import {
+  getEffectiveScrollY,
+  getGlobalTraversalPhase,
+  getGlobalTraversalSpanPx,
+  isNativeScrollOnly,
+  subscribePhysicsScroll,
+  subscribeTraversalPhase,
+  type TraversalPhase,
+} from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import {
   GLOBAL_NEOTRIBAL_BG_MOTION,
-  computeGlobalBgScrollTravel,
 } from '../../motion/thresholdConfig';
 
 const GLOBAL_NEOTRIBAL_ASSET =
   '/assets/aistudio/Ornamentos_Cybertribais_Luminosos_faef8fd1.png';
 
 /**
- * Camada decorativa neotribal global (atrás de todo o conteúdo do site):
- * - Mobile: camada 100% estática, fixa à viewport (position: fixed; inset: 0),
- *   sem parallax, sem deslocamentos atrelados ao scroll, sem springs, lerp ou
- *   movimentos de cursor, sem loops de RAF ou ResizeObserver, preservando
- *   as proporções, opacidade e adaptação aos temas claro e escuro.
- * - Desktop: preserva integralmente a profundidade vertical vinculada à rolagem
- *   e o parallax sutil oposto ao cursor.
+ * Camada decorativa neotribal global:
+ * - Mobile: camada 100% estática, permanentemente fixa à viewport (position: fixed; inset: 0),
+ *   sem parallax, sem deslocamento de scroll, sem springs ou cálculos.
+ * - Desktop:
+ *   1. Container permanentemente em position: fixed; inset: 0 em todas as etapas.
+ *   2. Durante a travessia e revelação (Estados A, B e C), backgroundY permanece rigorosamente em zero.
+ *   3. A liberação da navegação não altera a transformação da imagem.
+ *   4. O deslocamento posterior segue estritamente:
+ *      freeScroll = Math.max(0, scrollY - releaseScrollY);
+ *      backgroundY = -freeScroll * parallaxFactor;
+ *   5. Zero compensação de scroll acumulado, zero dependência de scrollYProgress global na homepage,
+ *      sem descontinuidade ou saltos.
  */
 export function NeotribalGlobalBackground() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const { nx, ny, reducedMotion } = useThresholdPointer();
+  const { pathname } = useRouter();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
   const [isMobile, setIsMobile] = useState<boolean>(() =>
     typeof window !== 'undefined'
       ? window.matchMedia('(max-width: 767px)').matches || isNativeScrollOnly()
@@ -66,92 +82,103 @@ export function NeotribalGlobalBackground() {
   const cursorX = useSpring(targetCursorX, GLOBAL_NEOTRIBAL_BG_MOTION.spring);
   const cursorY = useSpring(targetCursorY, GLOBAL_NEOTRIBAL_BG_MOTION.spring);
 
-  // Profundidade vertical sutil vinculada à rolagem completa da página (apenas Desktop)
-  const { scrollYProgress } = useScroll();
-  const maxTravelMv = useMotionValue(0);
-  const scrollOffsetY = useTransform(
-    [scrollYProgress, maxTravelMv],
-    ([progress, travel]: number[]) => {
-      if (reducedMotion || isMobile) return 0;
-      return progress * travel;
-    }
-  );
+  // Deslocamento vertical determinístico com referência espacial estável pós-travessia
+  const scrollOffsetY = useMotionValue(0);
+  const phaseRef = useRef<TraversalPhase>(getGlobalTraversalPhase());
 
-  useEffect(() => {
-    // No mobile, o background é 100% estático e fixo: elimina medições, loops de RAF e observers
-    if (isMobile) {
-      maxTravelMv.set(0);
+  const syncScroll = () => {
+    if (typeof window === 'undefined') return;
+    if (isMobile || reducedMotion) {
+      scrollOffsetY.set(0);
       return;
     }
 
-    let rafId = 0;
-    let lastTravel = -1;
-    let lastVw = typeof window !== 'undefined' ? window.innerWidth : 1440;
-    let lastVh = typeof window !== 'undefined' ? window.innerHeight : 900;
+    const isHome = pathnameRef.current === '/';
+    const currentPhase = isHome ? phaseRef.current : 'free-navigation';
 
-    const measure = () => {
-      rafId = 0;
-      const containerEl = containerRef.current;
-      const imgEl = imageRef.current;
-      if (!containerEl || !imgEl) return;
-
-      const pageHeight = containerEl.offsetHeight;
-      const viewportHeight = window.innerHeight || 900;
-      const imgWidth = imgEl.offsetWidth;
-      const naturalImgHeight = imgWidth > 0 ? imgWidth * 1.5 : viewportHeight * 1.5;
-
-      const travel = computeGlobalBgScrollTravel(
-        pageHeight,
-        viewportHeight,
-        naturalImgHeight
-      );
-      if (Math.abs(travel - lastTravel) > 0.5) {
-        lastTravel = travel;
-        maxTravelMv.set(travel);
-      }
-    };
-
-    const scheduleMeasure = () => {
-      if (!rafId) {
-        rafId = window.requestAnimationFrame(measure);
-      }
-    };
-
-    const onWindowResize = () => {
-      const nextVw = window.innerWidth;
-      const nextVh = window.innerHeight || 900;
-      if (Math.abs(nextVw - lastVw) < 2 && Math.abs(nextVh - lastVh) < 160) {
-        return;
-      }
-      lastVw = nextVw;
-      lastVh = nextVh;
-      scheduleMeasure();
-    };
-
-    measure();
-
-    const ro =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(scheduleMeasure)
-        : null;
-
-    if (ro) {
-      if (containerRef.current) ro.observe(containerRef.current);
+    // Durante Estados A, B e C na Home (hero-fixed, traversal-active, collections-reveal),
+    // backgroundY permanece rigorosamente em zero.
+    if (isHome && currentPhase !== 'free-navigation') {
+      scrollOffsetY.set(0);
+      return;
     }
 
-    window.addEventListener('resize', onWindowResize, { passive: true });
-    return () => {
-      if (rafId) window.cancelAnimationFrame(rafId);
-      ro?.disconnect();
-      window.removeEventListener('resize', onWindowResize);
+    const scrollY = getEffectiveScrollY();
+    const releaseScrollY = isHome ? getGlobalTraversalSpanPx() : 0;
+    const freeScroll = Math.max(0, scrollY - releaseScrollY);
+
+    if (freeScroll <= 0) {
+      scrollOffsetY.set(0);
+      return;
+    }
+
+    // Como o container é position: fixed, a altura total da página vem de documentElement.scrollHeight
+    const vh = window.innerHeight || 900;
+    const vw = window.innerWidth || 1440;
+    const docH = document.documentElement.scrollHeight;
+    const maxDocScroll = Math.max(0, docH - vh);
+    const freeScrollableDistance = Math.max(1, maxDocScroll - releaseScrollY);
+
+    // Dimensões reais da imagem neotribal no desktop (aspect ratio 1.5 sobre largura 103vw)
+    const imgEl = imageRef.current;
+    const naturalImageHeight =
+      imgEl && imgEl.offsetHeight > 0
+        ? imgEl.offsetHeight
+        : Math.round(vw * 1.03 * 1.5);
+    const maxImageOverflow = Math.max(0, naturalImageHeight - vh);
+
+    const parallaxFactor =
+      freeScrollableDistance > 0 ? maxImageOverflow / freeScrollableDistance : 0;
+    const backgroundY = -Math.min(maxImageOverflow, freeScroll * parallaxFactor);
+
+    scrollOffsetY.set(Number(backgroundY.toFixed(2)));
+  };
+
+  useEffect(() => {
+    pathnameRef.current = pathname;
+    if (pathname !== '/') {
+      phaseRef.current = 'free-navigation';
+    } else {
+      phaseRef.current = getGlobalTraversalPhase();
+    }
+    syncScroll();
+  }, [pathname]);
+
+  useEffect(() => {
+    // No mobile, o background é 100% estático e fixo: zero listeners e zero cálculos
+    if (isMobile) {
+      scrollOffsetY.set(0);
+      return;
+    }
+
+    syncScroll();
+
+    const unsubScroll = subscribePhysicsScroll(syncScroll);
+    const unsubPhase = subscribeTraversalPhase((nextPhase) => {
+      phaseRef.current = nextPhase;
+      syncScroll();
+    });
+
+    const onWindowResize = () => {
+      syncScroll();
     };
-  }, [maxTravelMv, isMobile]);
+
+    window.addEventListener('resize', onWindowResize, { passive: true });
+    window.addEventListener('scroll', syncScroll, { passive: true });
+
+    return () => {
+      unsubScroll();
+      unsubPhase();
+      window.removeEventListener('resize', onWindowResize);
+      window.removeEventListener('scroll', syncScroll);
+    };
+  }, [isMobile, reducedMotion, scrollOffsetY]);
 
   return (
     <div
       ref={containerRef}
       aria-hidden="true"
-      className="pointer-events-none select-none fixed md:absolute inset-0 overflow-hidden z-[2]"
+      className="pointer-events-none select-none fixed inset-0 overflow-hidden z-[2]"
     >
       <motion.div
         data-global-neotribal-scroll="true"
@@ -177,7 +204,8 @@ export function NeotribalGlobalBackground() {
               height={1536}
               decoding="async"
               draggable={false}
-              className="w-full h-full object-cover object-center md:w-full md:h-auto md:object-none block mix-blend-normal opacity-[0.56] dark:opacity-[0.46] [mask-image:linear-gradient(to_bottom,transparent_0%,black_3%,black_97%,transparent_100%)] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+              onLoad={syncScroll}
+              className="w-full h-full object-cover object-center md:w-full md:h-auto md:min-h-screen md:object-none block mix-blend-normal opacity-[0.56] dark:opacity-[0.46] [mask-image:linear-gradient(to_bottom,transparent_0%,black_3%,black_97%,transparent_100%)] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
             />
           </picture>
         </motion.div>
@@ -185,4 +213,6 @@ export function NeotribalGlobalBackground() {
     </div>
   );
 }
+
+
 

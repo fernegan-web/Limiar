@@ -128,6 +128,7 @@ function AppShell() {
       <div className="limiar-grain" aria-hidden="true" />
 
       <Navbar
+        overlay={isHomeRoute}
         onOpenSearch={() => {
           setSearchMounted(true);
           setSearchOpen(true);

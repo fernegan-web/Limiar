@@ -3,12 +3,23 @@ import assert from 'node:assert/strict';
 import {
   CinematicProgressDamper,
   HERO_TRAVERSAL_DAMPER_CONFIG,
+  TRAVERSAL_ACTIVE_START_PROGRESS,
+  TRAVERSAL_HANDOFF_PROGRESS,
+  canUnlockFreeNavigation,
   computeDeterministicTraversalProgress,
   computeMobileTraversalSpanPx,
+  computeTraversalSpanPx,
   getEffectiveScrollY,
+  getGlobalTraversalPhase,
+  getGlobalTraversalSpanPx,
   isNativeScrollOnly,
+  mapTraversalSpanToTimelineProgress,
+  mapUnitProgressToTimeline,
+  setGlobalTraversalPhase,
+  setGlobalTraversalSpanPx,
   setLenisInstance,
   shouldAcceptMobileViewportHeightUpdate,
+  subscribeTraversalPhase,
   supportsCssScrollTimeline,
 } from './scrollPhysics';
 
@@ -213,3 +224,118 @@ test('supportsCssScrollTimeline detects browser capability accurately', () => {
     (globalThis as { CSS?: unknown }).CSS = originalCSS;
   }
 });
+
+test('sequential traversal mapping has zero initial dead zone and stops cleanly at handoff 0.72', () => {
+  const mobileSpan = computeTraversalSpanPx({ stableViewportHeight: 780, isNative: true });
+  const desktopSpan = computeTraversalSpanPx({ stableViewportHeight: 900, isNative: false });
+
+  assert.ok(mobileSpan >= 580 && mobileSpan <= 960);
+  assert.ok(desktopSpan >= 720 && desktopSpan <= 1140);
+
+  // Rest at 0, immediate traversal active (> 0.10) on the very first pixel scrolled
+  assert.equal(mapUnitProgressToTimeline(0), 0);
+  assert.equal(mapTraversalSpanToTimelineProgress(0, mobileSpan), 0);
+
+  const firstPixelP = mapTraversalSpanToTimelineProgress(1, mobileSpan);
+  assert.ok(
+    firstPixelP > TRAVERSAL_ACTIVE_START_PROGRESS,
+    `Expected immediate progression above 0.10 on 1px scroll, got ${firstPixelP}`
+  );
+
+  const midP = mapUnitProgressToTimeline(0.5);
+  assert.ok(Math.abs(midP - 0.41) < 1e-4);
+
+  assert.equal(mapUnitProgressToTimeline(1), TRAVERSAL_HANDOFF_PROGRESS);
+  assert.equal(mapTraversalSpanToTimelineProgress(mobileSpan + 400, mobileSpan), TRAVERSAL_HANDOFF_PROGRESS);
+});
+
+test('canUnlockFreeNavigation blocks residual touch or fling inertia until settled', () => {
+  // Reveal incomplete
+  assert.equal(
+    canUnlockFreeNavigation({
+      revealCompleted: false,
+      touchActive: false,
+      lastDownwardIntentTs: 0,
+      lastScrollTs: 0,
+      nowMs: 1000,
+    }),
+    false
+  );
+
+  // Touch still pressed
+  assert.equal(
+    canUnlockFreeNavigation({
+      revealCompleted: true,
+      touchActive: true,
+      lastDownwardIntentTs: 0,
+      lastScrollTs: 0,
+      nowMs: 1000,
+    }),
+    false
+  );
+
+  // Recent wheel/fling tail (< 150ms)
+  assert.equal(
+    canUnlockFreeNavigation({
+      revealCompleted: true,
+      touchActive: false,
+      lastDownwardIntentTs: 920,
+      lastScrollTs: 920,
+      nowMs: 1000,
+    }),
+    false
+  );
+
+  // Reveal complete + inertia settled (>= 150ms)
+  assert.equal(
+    canUnlockFreeNavigation({
+      revealCompleted: true,
+      touchActive: false,
+      lastDownwardIntentTs: 800,
+      lastScrollTs: 820,
+      nowMs: 1000,
+    }),
+    true
+  );
+});
+
+test('CinematicProgressDamper reverses immediately from current frame without forward overshoot', () => {
+  const damper = new CinematicProgressDamper(HERO_TRAVERSAL_DAMPER_CONFIG);
+  damper.setTarget(0.8);
+  let prev = 0;
+  for (let i = 0; i < 8; i++) {
+    prev = damper.step(1 / 60);
+  }
+  assert.ok(prev > 0.1);
+
+  // User reverses direction toward 0 mid-traversal
+  damper.setTarget(0.05);
+  const afterReverse = damper.step(1 / 60);
+  assert.ok(afterReverse <= prev, `Expected immediate reversal (${afterReverse} <= ${prev})`);
+});
+
+test('global traversal phase and span listeners notify synchronously on state change', () => {
+  const received: string[] = [];
+  const unsub = subscribeTraversalPhase((p) => received.push(p));
+
+  setGlobalTraversalPhase('traversal-active');
+  assert.equal(getGlobalTraversalPhase(), 'traversal-active');
+
+  setGlobalTraversalPhase('collections-reveal');
+  assert.equal(getGlobalTraversalPhase(), 'collections-reveal');
+
+  setGlobalTraversalPhase('free-navigation');
+  assert.equal(getGlobalTraversalPhase(), 'free-navigation');
+
+  assert.deepEqual(received, ['traversal-active', 'collections-reveal', 'free-navigation']);
+
+  unsub();
+  setGlobalTraversalPhase('hero-fixed');
+  assert.equal(getGlobalTraversalPhase(), 'hero-fixed');
+  assert.equal(received.length, 3); // no new events after unsub
+
+  setGlobalTraversalSpanPx(920);
+  assert.equal(getGlobalTraversalSpanPx(), 920);
+});
+
+

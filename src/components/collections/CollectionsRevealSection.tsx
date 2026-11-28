@@ -12,20 +12,35 @@ import {
 import { ResilientImage } from '../ui/ResilientImage';
 import { UltravioletButton } from '../ui/UltravioletButton';
 
+export type CollectionsRevealDirection = 'hidden' | 'forward' | 'reverse' | 'settled';
+
 interface CollectionsRevealSectionProps {
   collections: Collection[];
   progressMv?: MotionValue<number>;
   staticMode?: boolean;
   isCssDriven?: boolean;
+  revealDirection?: CollectionsRevealDirection;
+  freeNavUnlocked?: boolean;
+  reducedMotion?: boolean;
+  onRevealComplete?: () => void;
+  onRevealReversed?: () => void;
   onViewAllProducts: () => void;
   children?: React.ReactNode;
 }
+
+const REVEAL_DURATION_MS = 860;
+const REDUCED_REVEAL_DURATION_MS = 140;
+const REVERSE_PLAYBACK_RATE = -2.2;
 
 export function CollectionsRevealSection({
   collections,
   progressMv,
   staticMode = false,
-  isCssDriven = false,
+  revealDirection = 'hidden',
+  freeNavUnlocked = false,
+  reducedMotion = false,
+  onRevealComplete,
+  onRevealReversed,
   onViewAllProducts,
   children,
 }: CollectionsRevealSectionProps) {
@@ -40,6 +55,18 @@ export function CollectionsRevealSection({
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
   );
 
+  const directionRef = useRef<CollectionsRevealDirection>(revealDirection);
+  directionRef.current = revealDirection;
+
+  const onRevealCompleteRef = useRef(onRevealComplete);
+  onRevealCompleteRef.current = onRevealComplete;
+  const onRevealReversedRef = useRef(onRevealReversed);
+  onRevealReversedRef.current = onRevealReversed;
+
+  const activeAnimsRef = useRef<Animation[]>([]);
+  const fallbackRafRef = useRef<number>(0);
+  const fallbackT01Ref = useRef<number>(0);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(max-width: 767px)');
@@ -50,37 +77,33 @@ export function CollectionsRevealSection({
   }, []);
 
   useEffect(() => {
-    if (isCssDriven) {
-      // Modo CSS Scroll-driven ativo: timeline nativa do navegador controla a revelação via GPU
-      return;
-    }
-
-    let mobileHiddenApplied = false;
-    let mobileSettledApplied = false;
+    const cancelAllAnims = () => {
+      if (fallbackRafRef.current) {
+        window.cancelAnimationFrame(fallbackRafRef.current);
+        fallbackRafRef.current = 0;
+      }
+      if (activeAnimsRef.current.length > 0) {
+        activeAnimsRef.current.forEach((anim) => {
+          try {
+            anim.onfinish = null;
+            anim.cancel();
+          } catch {
+            // noop
+          }
+        });
+        activeAnimsRef.current = [];
+      }
+    };
 
     const applyProgress = (p: number) => {
-      if (isMobile) {
-        if (p < 0.7) {
-          if (mobileHiddenApplied) return;
-          mobileHiddenApplied = true;
-          mobileSettledApplied = false;
-        } else if (p >= 0.95) {
-          if (mobileSettledApplied) return;
-          mobileSettledApplied = true;
-          mobileHiddenApplied = false;
-        } else {
-          mobileHiddenApplied = false;
-          mobileSettledApplied = false;
-        }
-      }
-
       const state = computeCollectionsReveal(p, collections.length, isMobile);
 
       if (rootRef.current) {
         rootRef.current.style.pointerEvents = state.interactive ? 'auto' : 'none';
+        rootRef.current.style.visibility = p <= 0.721 && !staticMode ? 'hidden' : 'visible';
         rootRef.current.setAttribute(
           'aria-hidden',
-          state.header.opacity < 0.08 ? 'true' : 'false'
+          state.header.opacity < 0.08 && !staticMode ? 'true' : 'false'
         );
       }
 
@@ -94,16 +117,12 @@ export function CollectionsRevealSection({
         if (h.opacity >= 0.999) {
           headerRef.current.style.transform = 'none';
           headerRef.current.style.filter = 'none';
-          if (isMobile) headerRef.current.style.willChange = 'auto';
+        } else if (isMobile) {
+          headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
+          headerRef.current.style.filter = 'none';
         } else {
-          if (isMobile) {
-            headerRef.current.style.willChange = h.opacity > 0.005 ? 'transform, opacity' : 'auto';
-            headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
-            headerRef.current.style.filter = 'none';
-          } else {
-            headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
-            headerRef.current.style.filter = h.blurPx > 0.1 ? `blur(${h.blurPx}px)` : 'none';
-          }
+          headerRef.current.style.transform = `translate3d(0, ${h.y}px, 0) scale(${h.scale})`;
+          headerRef.current.style.filter = h.blurPx > 0.1 ? `blur(${h.blurPx}px)` : 'none';
         }
       }
 
@@ -114,9 +133,7 @@ export function CollectionsRevealSection({
         if (c.opacity >= 0.999) {
           el.style.transform = 'none';
           el.style.filter = 'none';
-          if (isMobile) el.style.willChange = 'auto';
         } else if (isMobile) {
-          el.style.willChange = c.opacity > 0.005 ? 'transform, opacity' : 'auto';
           el.style.transform = `translate3d(0, ${c.y}px, 0) scale(${c.scale})`;
           el.style.filter = 'none';
         } else {
@@ -131,9 +148,7 @@ export function CollectionsRevealSection({
         if (cta.opacity >= 0.999) {
           ctaRef.current.style.transform = 'none';
           ctaRef.current.style.filter = 'none';
-          if (isMobile) ctaRef.current.style.willChange = 'auto';
         } else if (isMobile) {
-          ctaRef.current.style.willChange = cta.opacity > 0.005 ? 'transform, opacity' : 'auto';
           ctaRef.current.style.transform = `translate3d(0, ${cta.y}px, 0) scale(${cta.scale})`;
           ctaRef.current.style.filter = 'none';
         } else {
@@ -145,14 +160,268 @@ export function CollectionsRevealSection({
     };
 
     if (staticMode) {
+      cancelAllAnims();
       applyProgress(1);
       return;
     }
 
-    applyProgress(progressMv?.get() ?? 0);
-    const unsub = progressMv?.on('change', applyProgress);
-    return () => unsub?.();
-  }, [progressMv, collections.length, staticMode, isMobile]);
+    if (revealDirection === 'hidden') {
+      cancelAllAnims();
+      fallbackT01Ref.current = 0;
+      applyProgress(0.72);
+      return;
+    }
+
+    if (revealDirection === 'settled') {
+      cancelAllAnims();
+      fallbackT01Ref.current = 1;
+      applyProgress(1);
+      return;
+    }
+
+    const durationMs = reducedMotion ? REDUCED_REVEAL_DURATION_MS : REVEAL_DURATION_MS;
+    const canUseWaapi =
+      typeof window !== 'undefined' &&
+      ctaRef.current &&
+      typeof ctaRef.current.animate === 'function' &&
+      !reducedMotion;
+
+    if (!canUseWaapi) {
+      cancelAllAnims();
+      let lastTime = performance.now();
+      const stepFallback = (now: number) => {
+        const dt = Math.min(Math.max(now - lastTime, 1), 48);
+        lastTime = now;
+        const dir = directionRef.current;
+        if (dir === 'forward') {
+          fallbackT01Ref.current = Math.min(1, fallbackT01Ref.current + dt / durationMs);
+          applyProgress(0.72 + fallbackT01Ref.current * 0.28);
+          if (fallbackT01Ref.current >= 1) {
+            fallbackRafRef.current = 0;
+            onRevealCompleteRef.current?.();
+            return;
+          }
+        } else if (dir === 'reverse') {
+          fallbackT01Ref.current = Math.max(
+            0,
+            fallbackT01Ref.current - (dt * Math.abs(REVERSE_PLAYBACK_RATE)) / durationMs
+          );
+          applyProgress(0.72 + fallbackT01Ref.current * 0.28);
+          if (fallbackT01Ref.current <= 0) {
+            fallbackRafRef.current = 0;
+            onRevealReversedRef.current?.();
+            return;
+          }
+        } else {
+          fallbackRafRef.current = 0;
+          return;
+        }
+        fallbackRafRef.current = window.requestAnimationFrame(stepFallback);
+      };
+      if (revealDirection === 'reverse' && fallbackT01Ref.current <= 0) {
+        fallbackT01Ref.current = 1;
+      }
+      fallbackRafRef.current = window.requestAnimationFrame(stepFallback);
+      return () => {
+        if (fallbackRafRef.current) {
+          window.cancelAnimationFrame(fallbackRafRef.current);
+          fallbackRafRef.current = 0;
+        }
+      };
+    }
+
+    // Garante visibilidade durante forward/reverse
+    if (rootRef.current) {
+      rootRef.current.style.visibility = 'visible';
+      rootRef.current.style.pointerEvents = 'auto';
+      rootRef.current.setAttribute('aria-hidden', 'false');
+    }
+
+    const bindMasterHandlers = (anims: Animation[]) => {
+      const reverseMaster = anims[0];
+      const forwardMaster = anims[anims.length - 1];
+      anims.forEach((a) => {
+        a.onfinish = null;
+      });
+
+      if (forwardMaster) {
+        forwardMaster.onfinish = () => {
+          const ct = Number(forwardMaster.currentTime ?? 0);
+          if (directionRef.current === 'forward' && ct >= durationMs - 6) {
+            applyProgress(1);
+            cancelAllAnims();
+            onRevealCompleteRef.current?.();
+          }
+        };
+      }
+
+      if (reverseMaster) {
+        reverseMaster.onfinish = () => {
+          const ct = Number(reverseMaster.currentTime ?? 0);
+          if (directionRef.current === 'reverse' && ct <= 6) {
+            cancelAllAnims();
+            applyProgress(0.72);
+            onRevealReversedRef.current?.();
+          }
+        };
+      }
+    };
+
+    // Reutiliza animações já ativas para reversão instantânea e contínua do frame visual atual
+    if (activeAnimsRef.current.length > 0) {
+      const rate = revealDirection === 'forward' ? 1 : REVERSE_PLAYBACK_RATE;
+      activeAnimsRef.current.forEach((anim) => {
+        anim.playbackRate = rate;
+        anim.play();
+      });
+      bindMasterHandlers(activeAnimsRef.current);
+      return;
+    }
+
+    const anims: Animation[] = [];
+    const easing = 'cubic-bezier(0.22, 1, 0.36, 1)';
+    const initialTime = revealDirection === 'reverse' ? durationMs : 0;
+    const rate = revealDirection === 'forward' ? 1 : REVERSE_PLAYBACK_RATE;
+
+    if (envGlowRef.current) {
+      const anim = envGlowRef.current.animate(
+        [
+          { opacity: 0, offset: 0 },
+          { opacity: 1, offset: 0.4, easing },
+          { opacity: 1, offset: 1 },
+        ],
+        { duration: durationMs, fill: 'both', easing: 'linear' }
+      );
+      anim.currentTime = initialTime;
+      anim.playbackRate = rate;
+      anims.push(anim);
+    }
+
+    if (headerRef.current) {
+      const startFilter = isMobile ? 'none' : 'blur(8px)';
+      const endFilter = 'none';
+      const anim = headerRef.current.animate(
+        [
+          {
+            opacity: 0,
+            transform: 'translate3d(0, 28px, 0) scale(0.97)',
+            filter: startFilter,
+            offset: 0,
+          },
+          {
+            opacity: 0,
+            transform: 'translate3d(0, 28px, 0) scale(0.97)',
+            filter: startFilter,
+            offset: 0.11,
+          },
+          {
+            opacity: 1,
+            transform: 'translate3d(0, 0px, 0) scale(1)',
+            filter: endFilter,
+            offset: 0.46,
+            easing,
+          },
+          {
+            opacity: 1,
+            transform: 'translate3d(0, 0px, 0) scale(1)',
+            filter: endFilter,
+            offset: 1,
+          },
+        ],
+        { duration: durationMs, fill: 'both', easing: 'linear' }
+      );
+      anim.currentTime = initialTime;
+      anim.playbackRate = rate;
+      anims.push(anim);
+    }
+
+    collections.forEach((_, idx) => {
+      const el = cardRefs.current[idx];
+      if (!el) return;
+      const startOffset = Math.min(0.45, 0.21 + idx * 0.14);
+      const endOffset = Math.min(0.88, startOffset + 0.38);
+      const startTransform = isMobile
+        ? 'translate3d(0, 42px, 0) scale(0.93)'
+        : 'perspective(1100px) translate3d(0, 42px, 0) scale(0.93) rotateX(5deg)';
+      const endTransform = isMobile
+        ? 'translate3d(0, 0px, 0) scale(1)'
+        : 'perspective(1100px) translate3d(0, 0px, 0) scale(1) rotateX(0deg)';
+      const startFilter = isMobile ? 'none' : 'blur(10px)';
+
+      const anim = el.animate(
+        [
+          { opacity: 0, transform: startTransform, filter: startFilter, offset: 0 },
+          { opacity: 0, transform: startTransform, filter: startFilter, offset: startOffset },
+          { opacity: 1, transform: endTransform, filter: 'none', offset: endOffset, easing },
+          { opacity: 1, transform: endTransform, filter: 'none', offset: 1 },
+        ],
+        { duration: durationMs, fill: 'both', easing: 'linear' }
+      );
+      anim.currentTime = initialTime;
+      anim.playbackRate = rate;
+      anims.push(anim);
+    });
+
+    if (ctaRef.current) {
+      const startFilter = isMobile ? 'none' : 'blur(6px)';
+      const anim = ctaRef.current.animate(
+        [
+          {
+            opacity: 0,
+            transform: 'translate3d(0, 24px, 0) scale(0.96)',
+            filter: startFilter,
+            offset: 0,
+          },
+          {
+            opacity: 0,
+            transform: 'translate3d(0, 24px, 0) scale(0.96)',
+            filter: startFilter,
+            offset: 0.44,
+          },
+          {
+            opacity: 1,
+            transform: 'translate3d(0, 0px, 0) scale(1)',
+            filter: 'none',
+            offset: 1,
+            easing,
+          },
+        ],
+        { duration: durationMs, fill: 'both', easing: 'linear' }
+      );
+      anim.currentTime = initialTime;
+      anim.playbackRate = rate;
+      anims.push(anim);
+    }
+
+    activeAnimsRef.current = anims;
+    bindMasterHandlers(anims);
+  }, [revealDirection, collections, staticMode, isMobile, reducedMotion]);
+
+  useEffect(() => {
+    return () => {
+      if (fallbackRafRef.current) {
+        window.cancelAnimationFrame(fallbackRafRef.current);
+      }
+      activeAnimsRef.current.forEach((anim) => {
+        try {
+          anim.onfinish = null;
+          anim.cancel();
+        } catch {
+          // noop
+        }
+      });
+      activeAnimsRef.current = [];
+    };
+  }, []);
+
+  // Mantém compatibilidade caso progressMv seja passado diretamente fora do fluxo sequencial
+  useEffect(() => {
+    if (staticMode || !progressMv) return;
+    if (revealDirection === 'settled') return;
+    return () => {
+      // Gerenciado pelo ciclo de revealDirection
+    };
+  }, [progressMv, staticMode, revealDirection]);
 
   return (
     <section
@@ -162,9 +431,7 @@ export function CollectionsRevealSection({
       className={
         staticMode
           ? 'relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16'
-          : `relative z-30 flex flex-col justify-start w-full overflow-x-clip ${
-              isCssDriven ? 'limiar-collections-root' : ''
-            }`
+          : 'relative z-30 -mt-[100dvh] min-h-[100dvh] flex flex-col justify-start w-full overflow-x-clip'
       }
     >
       {/* Atmosfera contida pós-travessia */}
@@ -172,9 +439,7 @@ export function CollectionsRevealSection({
         <div
           ref={envGlowRef}
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 h-[100svh] md:h-[100dvh] opacity-0 md:transition-opacity md:duration-300 ${
-            isCssDriven ? 'limiar-collections-env-glow' : ''
-          }`}
+          className="pointer-events-none absolute inset-x-0 top-0 h-[100svh] md:h-[100dvh] opacity-0"
           style={{
             background:
               'radial-gradient(58% 46% at 50% 42%, var(--atmosphere-radial-1) 0%, transparent 72%)',
@@ -186,15 +451,13 @@ export function CollectionsRevealSection({
         className={
           staticMode
             ? 'relative z-10 space-y-6 sm:space-y-8'
-            : 'relative z-10 mx-auto max-w-[1360px] w-full px-4 sm:px-8 pt-16 sm:pt-20 md:pt-[84px] pb-4 sm:pb-6 flex flex-col justify-start'
+            : 'relative z-10 mx-auto max-w-[1360px] w-full px-4 sm:px-8 pt-[76px] sm:pt-24 md:pt-[96px] pb-6 sm:pb-10 flex flex-col justify-start'
         }
       >
         {/* Cabeçalho da Seção de Coleções */}
         <div
           ref={headerRef}
-          className={`flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 sm:mb-6 md:will-change-transform ${
-            isCssDriven ? 'limiar-collections-header' : ''
-          }`}
+          className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 sm:mb-6 md:will-change-transform"
         >
           <div className="space-y-1.5 sm:space-y-2">
             <div className="flex items-center gap-2 text-[var(--text-muted)]">
@@ -245,9 +508,7 @@ export function CollectionsRevealSection({
                   }
                 }}
                 data-testid={`reveal-collection-card-${col.slug}`}
-                className={`group relative glass-card rounded-[22px] sm:rounded-[26px] overflow-hidden flex flex-col justify-between cursor-pointer md:will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-uv)] ${
-                  isCssDriven ? (idx === 0 ? 'limiar-collections-card-0' : 'limiar-collections-card-1') : ''
-                }`}
+                className="group relative glass-card rounded-[22px] sm:rounded-[26px] overflow-hidden flex flex-col justify-between cursor-pointer md:will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-uv)]"
               >
                 <div className="relative h-[106px] sm:h-[170px] lg:h-[210px] w-full overflow-hidden bg-[var(--bg-card-media)]">
                   <ResilientImage
@@ -305,9 +566,7 @@ export function CollectionsRevealSection({
         {/* Botão Final: Salto Direto para Todos os Produtos */}
         <div
           ref={ctaRef}
-          className={`mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 md:will-change-transform ${
-            isCssDriven ? 'limiar-collections-cta' : ''
-          }`}
+          className="mt-4 sm:mt-6 flex flex-wrap items-center justify-between gap-4 md:will-change-transform"
         >
           <UltravioletButton
             type="button"
@@ -324,7 +583,20 @@ export function CollectionsRevealSection({
         </div>
       </div>
 
-      {children && <div className="relative z-10 w-full">{children}</div>}
+      {children && (
+        <div
+          className={
+            staticMode
+              ? 'relative z-10 w-full'
+              : freeNavUnlocked
+              ? 'relative z-10 w-full block'
+              : 'hidden'
+          }
+        >
+          {children}
+        </div>
+      )}
     </section>
   );
 }
+

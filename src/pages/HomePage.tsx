@@ -62,6 +62,7 @@ export function HomePage() {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [activeSlideIndex] = useState(0);
+  const [freeNavUnlocked, setFreeNavUnlocked] = useState(false);
 
   // Newsletter state
   const [newsletterEmail, setNewsletterEmail] = useState('');
@@ -411,25 +412,26 @@ export function HomePage() {
         totalSlides={HERO_SLIDES.length}
         collections={collections}
         onViewAllProducts={handleScrollToAllProducts}
+        onFreeNavigationChange={setFreeNavUnlocked}
         postCollectionsContent={postCollectionsContent}
       />
 
       {/* ================================================================
-          CAPÍTULO 02: SEÇÃO INSTITUCIONAL — SOBRE A LIMIAR
+          CAPÍTULO 02: SEÇÃO INSTITUCIONAL — SOBRE A LIMIAR + RODAPÉ
+          Liberados exclusivamente no Estado D (free-navigation)
           ================================================================ */}
-      <SobreLimiarSection />
+      <div className={freeNavUnlocked ? 'block' : 'hidden'}>
+        <SobreLimiarSection />
 
-      {/* ================================================================
-          RODAPÉ OFICIAL
-          ================================================================ */}
-      <CinematicScrollReveal
-        startY={28}
-        startScale={0.97}
-        startBlur={6}
-        scrollOffset={['start 98%', 'end 99%']}
-      >
-        <Footer embeddedInReveal />
-      </CinematicScrollReveal>
+        <CinematicScrollReveal
+          startY={28}
+          startScale={0.97}
+          startBlur={6}
+          scrollOffset={['start 98%', 'end 99%']}
+        >
+          <Footer embeddedInReveal />
+        </CinematicScrollReveal>
+      </div>
     </div>
   );
 }
