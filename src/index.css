@@ -513,7 +513,7 @@ html.theme-transitioning circle {
   animation: limiarBlurIn 540ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-html.limiar-intro-holding .limiar-enter {
+html[data-intro-variant="hero-settle"].limiar-intro-holding .limiar-enter {
   animation-play-state: paused !important;
 }
 

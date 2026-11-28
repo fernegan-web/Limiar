@@ -15,11 +15,12 @@ import {
   supportsCssScrollDrivenAnimations,
 } from './scrollPhysics';
 import {
-  INTRO_SEEN_SESSION_KEY,
   SINGULARITY_INTRO_DURATION_MS,
   SINGULARITY_INTRO_FAILSAFE_MS,
   computeSingularityIntroFrame,
+  resolveSingularityIntroVariant,
   shouldPlaySingularityIntro,
+  type IntroEndingVariant,
   type SingularityIntroFrame,
 } from './singularityIntroTimeline';
 import { THRESHOLD_SPRING, computeNormalizedPointer } from './thresholdConfig';
@@ -31,6 +32,7 @@ interface ThresholdPointerContextValue {
   ny: MotionValue<number>;
   reducedMotion: boolean;
   introActive: boolean;
+  introVariant: IntroEndingVariant;
   introEngineActive: boolean;
   portalRevealed: boolean;
   markPortalRevealed: () => void;
@@ -48,41 +50,38 @@ export function useThresholdPointer(): ThresholdPointerContextValue {
   return ctx;
 }
 
-function readInitialIntroActive(): boolean {
-  if (typeof window === 'undefined') return false;
-  let sessionSeen = false;
-  try {
-    sessionSeen = window.sessionStorage.getItem(INTRO_SEEN_SESSION_KEY) === '1';
-  } catch {
-    sessionSeen = false;
+function readInitialIntroConfig(): {
+  active: boolean;
+  variant: IntroEndingVariant;
+} {
+  if (typeof window === 'undefined') {
+    return { active: false, variant: 'hero-settle' };
   }
   const reducedMotion =
     typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
       : false;
-
-  return shouldPlaySingularityIntro({
+  const variant = resolveSingularityIntroVariant(window.location.pathname);
+  const active = shouldPlaySingularityIntro({
     pathname: window.location.pathname,
     search: window.location.search,
     hash: window.location.hash,
     reducedMotion,
-    sessionSeen,
   });
-}
 
-function markIntroSeenSession(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem(INTRO_SEEN_SESSION_KEY, '1');
-  } catch {
-    // noop
-  }
+  return { active, variant };
 }
 
 export function ThresholdMotionProvider({ children }: { children: React.ReactNode }) {
-  const [introActive, setIntroActive] = useState<boolean>(() => readInitialIntroActive());
-  const [introEngineActive, setIntroEngineActive] = useState<boolean>(() => !readInitialIntroActive());
-  const [portalRevealed, setPortalRevealed] = useState<boolean>(() => !readInitialIntroActive());
+  const [initialIntroConfig] = useState(readInitialIntroConfig);
+  const [introActive, setIntroActive] = useState<boolean>(() => initialIntroConfig.active);
+  const [introVariant] = useState<IntroEndingVariant>(() => initialIntroConfig.variant);
+  const [introEngineActive, setIntroEngineActive] = useState<boolean>(
+    () => !initialIntroConfig.active
+  );
+  const [portalRevealed, setPortalRevealed] = useState<boolean>(
+    () => !initialIntroConfig.active
+  );
   const [nativeScrollOnly, setNativeScrollOnly] = useState<boolean>(() =>
     isNativeScrollOnly()
   );
@@ -93,8 +92,9 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
 
   const latestIntroFrameRef = useRef<SingularityIntroFrame>(
     computeSingularityIntroFrame(
-      introActive ? 0 : SINGULARITY_INTRO_DURATION_MS,
-      nativeScrollOnly
+      initialIntroConfig.active ? 0 : SINGULARITY_INTRO_DURATION_MS,
+      nativeScrollOnly,
+      initialIntroConfig.variant
     )
   );
 
@@ -108,10 +108,13 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
   const getLatestIntroFrame = useCallback(() => latestIntroFrameRef.current, []);
 
   const markPortalRevealed = useCallback(() => {
-    markIntroSeenSession();
     const wasActive = introActiveRef.current;
     const isMob = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
-    const finalFrame = computeSingularityIntroFrame(SINGULARITY_INTRO_DURATION_MS, isMob);
+    const finalFrame = computeSingularityIntroFrame(
+      SINGULARITY_INTRO_DURATION_MS,
+      isMob,
+      introVariant
+    );
     latestIntroFrameRef.current = finalFrame;
 
     if (wasActive) {
@@ -128,6 +131,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
     if (typeof document !== 'undefined') {
       document.documentElement.classList.remove('limiar-intro-holding');
       document.documentElement.dataset.introPhase = 'complete';
+      document.documentElement.dataset.introVariant = 'none';
     }
     if (wasActive && typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'auto' });
@@ -138,19 +142,21 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
         (activeLenis as unknown as { velocity: number; lastVelocity: number }).lastVelocity = 0;
       }
     }
-  }, []);
+  }, [introVariant]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const shouldHold = introActive && !portalRevealed;
     document.documentElement.classList.toggle('limiar-intro-holding', shouldHold);
+    document.documentElement.dataset.introVariant = shouldHold ? introVariant : 'none';
     if (!shouldHold) {
       document.documentElement.dataset.introPhase = 'complete';
     }
     return () => {
       document.documentElement.classList.remove('limiar-intro-holding');
+      document.documentElement.dataset.introVariant = 'none';
     };
-  }, [introActive, portalRevealed]);
+  }, [introActive, portalRevealed, introVariant]);
 
   // Orquestração unificada da abertura (~5s) com bloqueio de scroll e skip intencional seguro
   useEffect(() => {
@@ -182,7 +188,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
 
     const emitFrame = (elapsedMs: number, dtSec: number) => {
       const isMob = window.innerWidth < 768 || isNativeScrollOnly();
-      const frame = computeSingularityIntroFrame(elapsedMs, isMob);
+      const frame = computeSingularityIntroFrame(elapsedMs, isMob, introVariant);
       latestIntroFrameRef.current = frame;
       document.documentElement.dataset.introPhase = frame.phase;
 
@@ -277,7 +283,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
     };
-  }, [introActive, markPortalRevealed]);
+  }, [introActive, introVariant, markPortalRevealed]);
 
   // Monitora alterações de viewport/ponteiro (rotação, troca de modo ou emulador)
   useEffect(() => {
@@ -420,6 +426,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       lenisRef.current.stop();
     } else {
       if (!wasRevealed) {
+        lenisRef.current.resize();
         lenisRef.current.scrollTo(0, { immediate: true, force: true });
         (lenisRef.current as unknown as { velocity: number; lastVelocity: number }).velocity = 0;
         (lenisRef.current as unknown as { velocity: number; lastVelocity: number }).lastVelocity = 0;
@@ -514,6 +521,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
           ny,
           reducedMotion: false,
           introActive,
+          introVariant,
           introEngineActive,
           portalRevealed,
           markPortalRevealed,

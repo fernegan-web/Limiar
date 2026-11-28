@@ -8,6 +8,7 @@ import { AuthProvider } from './context/AuthContext';
 import { CartProvider, useCart } from './context/CartContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { InternalPortalIntroOverlay } from './components/intro/InternalPortalIntroOverlay';
 import { PortalRouteTransition } from './motion/PortalRouteTransition';
 import type { SingularityIntroFrame } from './motion/singularityIntroTimeline';
 import {
@@ -49,6 +50,7 @@ function AppShell() {
   const { pathname, commitScroll } = useRouter();
   const {
     introActive,
+    introVariant,
     markPortalRevealed,
     subscribeIntroTick,
     getLatestIntroFrame,
@@ -62,12 +64,30 @@ function AppShell() {
   const atmosphereRef = useRef<HTMLDivElement | null>(null);
   const grainRef = useRef<HTMLDivElement | null>(null);
 
+  const isHomeRoute =
+    pathname === '/' ||
+    pathname === '' ||
+    (pathname !== '/loja' &&
+      pathname !== '/colecoes' &&
+      pathname !== '/sobre' &&
+      pathname !== '/contato' &&
+      pathname !== '/auth/callback' &&
+      !pathname.startsWith('/produto/'));
+
   useEffect(() => {
-    const isHome = pathname === '/' || pathname === '';
-    if (!isHome && introActive) {
+    if (!introActive) return;
+    if (pathname === '/auth/callback') {
+      markPortalRevealed();
+      return;
+    }
+    if (introVariant === 'hero-settle' && !isHomeRoute) {
+      markPortalRevealed();
+      return;
+    }
+    if (introVariant === 'portal-expand' && isHomeRoute) {
       markPortalRevealed();
     }
-  }, [pathname, introActive, markPortalRevealed]);
+  }, [pathname, isHomeRoute, introActive, introVariant, markPortalRevealed]);
 
   useLayoutEffect(() => {
     const atmosphereEl = atmosphereRef.current;
@@ -123,15 +143,7 @@ function AppShell() {
     });
   }, []);
 
-  const isHomeRoute =
-    pathname === '/' ||
-    pathname === '' ||
-    (pathname !== '/loja' &&
-      pathname !== '/colecoes' &&
-      pathname !== '/sobre' &&
-      pathname !== '/contato' &&
-      pathname !== '/auth/callback' &&
-      !pathname.startsWith('/produto/'));
+  // isHomeRoute calculado acima para sincronizar intro e layout da página
 
   const renderPage = () => {
     if (pathname === '/' || pathname === '') {
@@ -235,6 +247,7 @@ function AppShell() {
       )}
       <WhatsAppFloatingButton hidden={introActive || searchOpen || accountOpen || isDrawerOpen} />
       <OrbitalCursor />
+      {introActive && introVariant === 'portal-expand' && <InternalPortalIntroOverlay />}
     </div>
   );
 }
