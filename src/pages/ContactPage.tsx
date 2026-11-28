@@ -3,7 +3,6 @@ import { AlertCircle, CheckCircle2, Instagram, Mail, MessageCircle } from 'lucid
 import {
   CybersigilismCorner,
   EclipseSigil,
-  PortalSingularity,
 } from '../components/ornaments/CybersigilismOrnaments';
 import { Reveal } from '../components/ui/Reveal';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
@@ -129,9 +128,9 @@ export function ContactPage() {
   return (
     <div className="relative overflow-hidden">
       <div className="relative mx-auto max-w-[1220px] px-4 sm:px-8 pt-12 pb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start lg:items-stretch">
           {/* Coluna Esquerda: Copy Editorial + Canais Oficiais */}
-          <div className="lg:col-span-5 space-y-8">
+          <div className="lg:col-span-5 space-y-8 flex flex-col justify-between">
             <div className="space-y-4">
               <div className="flex items-center gap-2.5 text-[var(--text-muted)]">
                 <EclipseSigil className="w-5 h-5 text-[var(--accent-uv)]" />
@@ -213,23 +212,19 @@ export function ContactPage() {
                 </a>
               </div>
             </div>
-
-            <div className="hidden lg:block pt-1">
-              <PortalSingularity className="w-32 h-32 opacity-45" />
-            </div>
           </div>
 
           {/* Coluna Direita: Formulário de Contato Funcional */}
-          <div className="lg:col-span-7">
-            <Reveal>
+          <div className="lg:col-span-7 flex flex-col">
+            <Reveal className="h-full flex-1 flex flex-col">
               <form
                 onSubmit={handleSubmit}
                 noValidate
-                className="relative overflow-hidden glass-surface-strong rounded-[28px] p-6 sm:p-8 space-y-5"
+                className="relative overflow-hidden glass-surface-strong rounded-[28px] p-6 sm:p-8 flex flex-col flex-1 h-full gap-5"
               >
                 <CybersigilismCorner className="pointer-events-none absolute top-3 right-3 w-11 h-11 opacity-45" />
 
-                <div className="space-y-1 pb-2 border-b border-[var(--border-hairline)]">
+                <div className="space-y-1 pb-2 border-b border-[var(--border-hairline)] shrink-0">
                   <h2 className="font-display font-light text-2xl sm:text-[26px] tracking-[0.02em] text-[var(--text-primary)]">
                     Deixe sua mensagem.
                   </h2>
@@ -248,7 +243,7 @@ export function ContactPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 shrink-0">
                   <div className="space-y-1.5">
                     <label
                       htmlFor="contact-name"
@@ -296,7 +291,7 @@ export function ContactPage() {
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 shrink-0">
                   <label
                     htmlFor="contact-subject"
                     className="block text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]"
@@ -319,24 +314,23 @@ export function ContactPage() {
                   )}
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="flex-1 flex flex-col min-h-[140px] space-y-1.5">
                   <label
                     htmlFor="contact-message"
-                    className="block text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]"
+                    className="block text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)] shrink-0"
                   >
                     Mensagem
                   </label>
                   <textarea
                     id="contact-message"
-                    rows={5}
                     value={form.message}
                     onChange={(e) => handleChange('message', e.target.value)}
                     placeholder="Escreva sua mensagem aqui..."
                     aria-invalid={Boolean(errors.message)}
-                    className="w-full rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:ring-1 focus:ring-[var(--accent-uv-glow)] focus:outline-none resize-y transition-all"
+                    className="w-full flex-1 min-h-[140px] rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)]/60 px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-uv)] focus:ring-1 focus:ring-[var(--accent-uv-glow)] focus:outline-none resize-none sm:resize-y transition-all"
                   />
                   {errors.message && (
-                    <p role="alert" className="text-xs text-[var(--accent-terracotta)]">
+                    <p role="alert" className="text-xs text-[var(--accent-terracotta)] shrink-0">
                       {errors.message}
                     </p>
                   )}
@@ -345,7 +339,7 @@ export function ContactPage() {
                 {status.kind === 'validation' && (
                   <div
                     role="alert"
-                    className="rounded-xl border border-[var(--accent-terracotta)]/45 bg-[var(--bg-surface)] p-4 text-xs text-[var(--accent-terracotta)] flex items-start gap-2.5"
+                    className="shrink-0 rounded-xl border border-[var(--accent-terracotta)]/45 bg-[var(--bg-surface)] p-4 text-xs text-[var(--accent-terracotta)] flex items-start gap-2.5"
                   >
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
                     <span className="leading-relaxed">{status.message}</span>
@@ -355,7 +349,7 @@ export function ContactPage() {
                 {status.kind === 'success' && (
                   <div
                     role="status"
-                    className="rounded-xl border border-[var(--accent-acid)]/50 bg-[var(--bg-surface)] p-4 text-xs text-[var(--accent-acid)] flex items-start gap-2.5"
+                    className="shrink-0 rounded-xl border border-[var(--accent-acid)]/50 bg-[var(--bg-surface)] p-4 text-xs text-[var(--accent-acid)] flex items-start gap-2.5"
                   >
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
                     <span className="leading-relaxed">{status.message}</span>
@@ -365,7 +359,7 @@ export function ContactPage() {
                 {status.kind === 'error' && (
                   <div
                     role="alert"
-                    className="rounded-xl border border-[var(--accent-terracotta)]/45 bg-[var(--bg-surface)] p-4 text-xs text-[var(--text-secondary)] space-y-3"
+                    className="shrink-0 rounded-xl border border-[var(--accent-terracotta)]/45 bg-[var(--bg-surface)] p-4 text-xs text-[var(--text-secondary)] space-y-3"
                   >
                     <div className="flex items-start gap-2.5 text-[var(--accent-terracotta)]">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
@@ -394,7 +388,7 @@ export function ContactPage() {
                   </div>
                 )}
 
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-4">
+                <div className="pt-2 flex flex-wrap items-center justify-between gap-4 shrink-0 mt-auto">
                   <ThresholdMagnetic maxPull={4}>
                     <UltravioletButton
                       type="submit"
