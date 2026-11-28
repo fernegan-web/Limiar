@@ -288,6 +288,7 @@ export function HeroTraversalStage({
   );
   const unlockTimerRef = useRef<number>(0);
   const stateCWatchdogRef = useRef<number>(0);
+  const hardFallbackTimerRef = useRef<number>(0);
   const voidVeilExitAnimRef = useRef<Animation | null>(null);
 
   const displacementRef = useRef<SVGFEDisplacementMapElement | null>(null);
@@ -324,6 +325,10 @@ export function HeroTraversalStage({
     if (stateCWatchdogRef.current) {
       window.clearTimeout(stateCWatchdogRef.current);
       stateCWatchdogRef.current = 0;
+    }
+    if (hardFallbackTimerRef.current) {
+      window.clearTimeout(hardFallbackTimerRef.current);
+      hardFallbackTimerRef.current = 0;
     }
   }, []);
 
@@ -651,6 +656,15 @@ export function HeroTraversalStage({
           tryUnlockAfterSettle();
         }
       }, REVEAL_WATCHDOG_MS);
+
+      // Mecanismo de segurança absoluto (fallback com timeout de 3200ms)
+      hardFallbackTimerRef.current = window.setTimeout(() => {
+        hardFallbackTimerRef.current = 0;
+        if (phaseRef.current === 'collections-reveal' && !freeNavUnlockedRef.current) {
+          revealCompletedRef.current = true;
+          commitFreeNavigationUnlock();
+        }
+      }, 3200);
     };
 
     const reverseBackToTraversal = (toRest: boolean) => {

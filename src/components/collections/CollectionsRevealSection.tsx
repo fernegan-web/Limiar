@@ -100,7 +100,8 @@ export function CollectionsRevealSection({
 
       if (rootRef.current) {
         rootRef.current.style.pointerEvents = state.interactive ? 'auto' : 'none';
-        rootRef.current.style.visibility = p <= 0.721 && !staticMode ? 'hidden' : 'visible';
+        rootRef.current.style.visibility =
+          p <= 0.721 && !staticMode && revealDirection === 'hidden' ? 'hidden' : 'visible';
         rootRef.current.setAttribute(
           'aria-hidden',
           state.header.opacity < 0.08 && !staticMode ? 'true' : 'false'
