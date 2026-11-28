@@ -6,6 +6,7 @@ import {
   useSpring,
   useTransform,
 } from 'motion/react';
+import { isNativeScrollOnly } from '../../motion/scrollPhysics';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import {
   GLOBAL_NEOTRIBAL_BG_MOTION,
@@ -17,32 +18,37 @@ const GLOBAL_NEOTRIBAL_ASSET =
 
 /**
  * Camada decorativa neotribal global (atrás de todo o conteúdo do site):
- * - Preserva integralmente a imagem PNG transparente original (2:3), sua
- *   posição, proporção e distribuição de elementos sem distorção ou inversão.
- * - Acompanha toda a extensão da página (do Hero ao Rodapé) com profundidade
- *   vertical vinculada à rolagem.
- * - Integra-se ao parallax magnético em direção oposta ao cursor, com baixa
- *   amplitude e retorno gradual para a posição de origem.
- * - Controla opacidade de forma independente entre os temas Claro e Escuro.
+ * - Mobile: camada 100% estática, fixa à viewport (position: fixed; inset: 0),
+ *   sem parallax, sem deslocamentos atrelados ao scroll, sem springs, lerp ou
+ *   movimentos de cursor, sem loops de RAF ou ResizeObserver, preservando
+ *   as proporções, opacidade e adaptação aos temas claro e escuro.
+ * - Desktop: preserva integralmente a profundidade vertical vinculada à rolagem
+ *   e o parallax sutil oposto ao cursor.
  */
 export function NeotribalGlobalBackground() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const { nx, ny, reducedMotion } = useThresholdPointer();
   const [isMobile, setIsMobile] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+    typeof window !== 'undefined'
+      ? window.matchMedia('(max-width: 767px)').matches || isNativeScrollOnly()
+      : false
   );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(max-width: 767px)');
-    const update = () => setIsMobile(mq.matches);
+    const update = () => setIsMobile(mq.matches || isNativeScrollOnly());
     update();
     mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
+    window.addEventListener('resize', update, { passive: true });
+    return () => {
+      mq.removeEventListener('change', update);
+      window.removeEventListener('resize', update);
+    };
   }, []);
 
-  // Parallax oposto ao cursor com mola lenta e retorno suave
+  // Parallax oposto ao cursor com mola lenta e retorno suave (apenas Desktop)
   const targetCursorX = useTransform(
     nx,
     [-1, 1],
@@ -60,18 +66,24 @@ export function NeotribalGlobalBackground() {
   const cursorX = useSpring(targetCursorX, GLOBAL_NEOTRIBAL_BG_MOTION.spring);
   const cursorY = useSpring(targetCursorY, GLOBAL_NEOTRIBAL_BG_MOTION.spring);
 
-  // Profundidade vertical sutil vinculada à rolagem completa da página
+  // Profundidade vertical sutil vinculada à rolagem completa da página (apenas Desktop)
   const { scrollYProgress } = useScroll();
   const maxTravelMv = useMotionValue(0);
   const scrollOffsetY = useTransform(
     [scrollYProgress, maxTravelMv],
     ([progress, travel]: number[]) => {
-      if (reducedMotion) return 0;
+      if (reducedMotion || isMobile) return 0;
       return progress * travel;
     }
   );
 
   useEffect(() => {
+    // No mobile, o background é 100% estático e fixo: elimina medições, loops de RAF e observers
+    if (isMobile) {
+      maxTravelMv.set(0);
+      return;
+    }
+
     let rafId = 0;
     let lastTravel = -1;
     let lastVw = typeof window !== 'undefined' ? window.innerWidth : 1440;
@@ -108,7 +120,7 @@ export function NeotribalGlobalBackground() {
     const onWindowResize = () => {
       const nextVw = window.innerWidth;
       const nextVh = window.innerHeight || 900;
-      if (isMobile && Math.abs(nextVw - lastVw) < 2 && Math.abs(nextVh - lastVh) < 160) {
+      if (Math.abs(nextVw - lastVw) < 2 && Math.abs(nextVh - lastVh) < 160) {
         return;
       }
       lastVw = nextVw;
@@ -139,22 +151,22 @@ export function NeotribalGlobalBackground() {
     <div
       ref={containerRef}
       aria-hidden="true"
-      className="pointer-events-none select-none absolute inset-0 overflow-hidden z-[2]"
+      className="pointer-events-none select-none fixed md:absolute inset-0 overflow-hidden z-[2]"
     >
       <motion.div
         data-global-neotribal-scroll="true"
-        style={reducedMotion ? undefined : { y: scrollOffsetY }}
-        className="w-full will-change-transform"
+        style={reducedMotion || isMobile ? undefined : { y: scrollOffsetY }}
+        className="w-full h-full md:h-auto md:will-change-transform"
       >
         <motion.div
           data-global-neotribal-bg="true"
           style={reducedMotion || isMobile ? undefined : { x: cursorX, y: cursorY }}
-          className="relative w-[103%] -left-[1.5%] md:will-change-transform"
+          className="relative w-full h-full md:w-[103%] md:-left-[1.5%] md:will-change-transform"
         >
-          <picture className="block w-full">
+          <picture className="block w-full h-full md:h-auto">
             <source
               srcSet="/assets/global-neotribal-720.webp 720w, /assets/global-neotribal-1024.webp 1024w"
-              sizes="103vw"
+              sizes="(max-width: 767px) 100vw, 103vw"
               type="image/webp"
             />
             <img
@@ -165,7 +177,7 @@ export function NeotribalGlobalBackground() {
               height={1536}
               decoding="async"
               draggable={false}
-              className="w-full h-auto block mix-blend-normal opacity-[0.56] dark:opacity-[0.46] [mask-image:linear-gradient(to_bottom,transparent_0%,black_3%,black_97%,transparent_100%)] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="w-full h-full object-cover object-center md:w-full md:h-auto md:object-none block mix-blend-normal opacity-[0.56] dark:opacity-[0.46] [mask-image:linear-gradient(to_bottom,transparent_0%,black_3%,black_97%,transparent_100%)] transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
             />
           </picture>
         </motion.div>
@@ -173,3 +185,4 @@ export function NeotribalGlobalBackground() {
     </div>
   );
 }
+
