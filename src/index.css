@@ -957,8 +957,8 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   }
 
   /* 1. Expansão e contração do buraco negro procedural (wrappers externos) */
-  .limiar-traversal-track[data-traversal-mode="css-driven"] [data-hero-layer="blackhole"],
-  .limiar-traversal-track[data-traversal-mode="css-driven"] [data-hero-layer="blackhole-front"] {
+  html:not(.limiar-intro-holding) .limiar-traversal-track[data-traversal-mode="css-driven"] [data-hero-layer="blackhole"],
+  html:not(.limiar-intro-holding) .limiar-traversal-track[data-traversal-mode="css-driven"] [data-hero-layer="blackhole-front"] {
     animation: limiarBlackholeTraversalMobile linear both;
     animation-timeline: --limiar-traversal;
     animation-range: contain 0% contain 100%;
@@ -966,7 +966,7 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   }
 
   /* 2. Expansão da moldura tribal */
-  .limiar-traversal-track[data-traversal-mode="css-driven"] [data-hero-layer="cybersigilism"] {
+  html:not(.limiar-intro-holding) .limiar-traversal-track[data-traversal-mode="css-driven"] [data-hero-layer="cybersigilism"] {
     animation: limiarWreathTraversalMobile linear both;
     animation-timeline: --limiar-traversal;
     animation-range: contain 0% contain 100%;
@@ -974,7 +974,7 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   }
 
   /* 3. Sucção da modelo */
-  .limiar-traversal-track[data-traversal-mode="css-driven"] [data-hero-layer="model"] {
+  html:not(.limiar-intro-holding) .limiar-traversal-track[data-traversal-mode="css-driven"] [data-hero-layer="model"] {
     animation: limiarModelSuctionMobile linear both;
     animation-timeline: --limiar-traversal;
     animation-range: contain 0% contain 100%;
@@ -982,7 +982,7 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   }
 
   /* 4. Sucção dos textos e elementos do Hero */
-  .limiar-traversal-track[data-traversal-mode="css-driven"] .limiar-hero-text-collapse {
+  html:not(.limiar-intro-holding) .limiar-traversal-track[data-traversal-mode="css-driven"] .limiar-hero-text-collapse {
     animation: limiarTextSuctionMobile linear both;
     animation-timeline: --limiar-traversal;
     animation-range: contain 0% contain 100%;
@@ -990,7 +990,7 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   }
 
   /* 5. Construção do véu de escuridão do horizonte no final do Estado B */
-  .limiar-traversal-track[data-traversal-mode="css-driven"] [data-testid="horizon-void-veil-build"] {
+  html:not(.limiar-intro-holding) .limiar-traversal-track[data-traversal-mode="css-driven"] [data-testid="horizon-void-veil-build"] {
     animation: limiarVoidVeilBuildMobile linear both;
     animation-timeline: --limiar-traversal;
     animation-range: contain 0% contain 100%;
@@ -998,7 +998,7 @@ html.limiar-custom-cursor [contenteditable="plaintext-only"] {
   }
 
   /* 6. Indicador de rolagem em repouso */
-  .limiar-traversal-track[data-traversal-mode="css-driven"] .limiar-scroll-hint {
+  html:not(.limiar-intro-holding) .limiar-traversal-track[data-traversal-mode="css-driven"] .limiar-scroll-hint {
     animation: limiarScrollHintMobile linear both;
     animation-timeline: --limiar-traversal;
     animation-range: contain 0% contain 100%;

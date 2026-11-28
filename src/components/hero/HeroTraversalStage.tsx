@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useMotionValue } from 'motion/react';
 import { useRouter } from '../../context/RouterContext';
 import {
@@ -20,12 +27,18 @@ import {
   mapUnitProgressToTimeline,
   notifyPhysicsScroll,
   setGlobalTraversalPhase,
+  setGlobalTraversalReleaseScrollY,
   setGlobalTraversalSpanPx,
   shouldAcceptMobileViewportHeightUpdate,
   subscribePhysicsScroll,
   supportsCssScrollTimeline,
   type TraversalPhase,
 } from '../../motion/scrollPhysics';
+import {
+  computeFlipOffset,
+  computeSyncedCssSpinDelaySec,
+  type SingularityIntroFrame,
+} from '../../motion/singularityIntroTimeline';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { ThresholdMagnetic } from '../../motion/ThresholdPrimitives';
 import type { Collection } from '../../types/commerce';
@@ -150,7 +163,17 @@ export function HeroTraversalStage({
   postCollectionsContent,
 }: HeroTraversalStageProps) {
   const { isPopStateReturn } = useRouter();
-  const { portalRevealed } = useThresholdPointer();
+  const {
+    introActive,
+    portalRevealed,
+    markPortalRevealed,
+    subscribeIntroTick,
+    getLatestIntroFrame,
+  } = useThresholdPointer();
+  const [mountedWithIntro] = useState<boolean>(() => introActive);
+  const introActiveRef = useRef(introActive);
+  introActiveRef.current = introActive;
+
   const trackRef = useRef<HTMLElement | null>(null);
   const leftColRef = useRef<HTMLDivElement | null>(null);
   const rightColRef = useRef<HTMLDivElement | null>(null);
@@ -200,6 +223,7 @@ export function HeroTraversalStage({
       isNative: isNativeScrollOnly(),
     });
     setGlobalTraversalSpanPx(span);
+    setGlobalTraversalReleaseScrollY(span);
     return span;
   });
 
@@ -223,6 +247,21 @@ export function HeroTraversalStage({
   const voidVeilBuildRef = useRef<HTMLDivElement | null>(null);
   const voidVeilExitRef = useRef<HTMLDivElement | null>(null);
   const heroOverlayGroupRef = useRef<HTMLDivElement | null>(null);
+
+  // Refs dedicadas à abertura integrada (~5s)
+  const bhAnchorRef = useRef<HTMLDivElement | null>(null);
+  const introRearFlipRef = useRef<HTMLDivElement | null>(null);
+  const introFrontFlipRef = useRef<HTMLDivElement | null>(null);
+  const introLogoFlipRef = useRef<HTMLDivElement | null>(null);
+  const introRearBhBirthRef = useRef<HTMLDivElement | null>(null);
+  const introFrontBhBirthRef = useRef<HTMLDivElement | null>(null);
+  const introWreathBirthRef = useRef<HTMLDivElement | null>(null);
+  const introLogoCollapseRef = useRef<HTMLDivElement | null>(null);
+  const introLogoDarkLayerRef = useRef<HTMLDivElement | null>(null);
+  const introLogoLightLayerRef = useRef<HTMLDivElement | null>(null);
+  const introModelRef = useRef<HTMLDivElement | null>(null);
+  const flipOffsetRef = useRef<{ tx: number; ty: number }>({ tx: 0, ty: 0 });
+  const flipMeasuredRef = useRef<boolean>(false);
 
   // Estado contínuo da rotação anti-horária da moldura e ciclo sequencial
   const progressRef = useRef(initialUnlocked ? TRAVERSAL_HANDOFF_PROGRESS : 0);
@@ -377,17 +416,21 @@ export function HeroTraversalStage({
     const { sectionTopDocY, traversalSpanPx } = metricsRef.current;
     const targetSpanScrollY = sectionTopDocY + traversalSpanPx;
 
+    // Sincroniza a posição interna do Lenis com a posição real do documento e zera qualquer inércia residual
     if (lenis && !isNativeScrollOnly()) {
       lenis.stop();
+      lenis.scrollTo(targetSpanScrollY, { immediate: true, force: true });
+      (lenis as unknown as { velocity: number; lastVelocity: number }).velocity = 0;
+      (lenis as unknown as { velocity: number; lastVelocity: number }).lastVelocity = 0;
       lenis.start();
-      if (lenis.scroll > targetSpanScrollY + 1) {
-        lenis.scrollTo(targetSpanScrollY, { immediate: true, force: true });
-      }
+    } else if (typeof window !== 'undefined') {
+      window.scrollTo({ top: targetSpanScrollY, behavior: 'auto' });
     }
+
+    setGlobalTraversalReleaseScrollY(targetSpanScrollY);
 
     phaseRef.current = 'free-navigation';
     setPhase('free-navigation');
-    setGlobalTraversalPhase('free-navigation');
 
     revealDirectionRef.current = 'settled';
     setRevealDirection('settled');
@@ -399,8 +442,16 @@ export function HeroTraversalStage({
 
     driveVoidVeilExit('reset-clear');
 
+    // Sincroniza a notificação da fase com a conclusão do ciclo de renderização
     window.requestAnimationFrame(() => {
-      getLenisInstance()?.resize();
+      const active = getLenisInstance();
+      if (active && !isNativeScrollOnly()) {
+        active.resize();
+        if (Math.abs(active.scroll - targetSpanScrollY) > 0.5) {
+          active.scrollTo(targetSpanScrollY, { immediate: true, force: true });
+        }
+      }
+      setGlobalTraversalPhase('free-navigation');
       notifyPhysicsScroll();
     });
   }, [clearUnlockTimers, driveVoidVeilExit]);
@@ -413,6 +464,14 @@ export function HeroTraversalStage({
     }
 
     const nowMs = performance.now();
+    const lenis = getLenisInstance();
+    const isLenisMoving =
+      !isNativeScrollOnly() &&
+      lenis != null &&
+      (Boolean(lenis.isScrolling) ||
+        Math.abs(lenis.velocity) > 0.005 ||
+        Math.abs((lenis.targetScroll ?? lenis.scroll) - lenis.scroll) > 0.5);
+
     const settled = canUnlockFreeNavigation({
       revealCompleted: revealCompletedRef.current,
       touchActive: touchActiveRef.current,
@@ -420,6 +479,7 @@ export function HeroTraversalStage({
       lastScrollTs: lastScrollTsRef.current,
       nowMs,
       settleMs: INERTIA_SETTLE_MS,
+      isLenisMoving,
     });
 
     if (settled) {
@@ -429,7 +489,7 @@ export function HeroTraversalStage({
 
     const waitDown = Math.max(0, INERTIA_SETTLE_MS - (nowMs - lastDownIntentTsRef.current));
     const waitScroll = Math.max(0, INERTIA_SETTLE_MS - (nowMs - lastScrollTsRef.current));
-    const delay = Math.max(36, waitDown, waitScroll);
+    const delay = Math.max(36, waitDown, waitScroll, isLenisMoving ? 60 : 0);
     unlockTimerRef.current = window.setTimeout(() => {
       unlockTimerRef.current = 0;
       tryUnlockAfterSettle();
@@ -460,9 +520,23 @@ export function HeroTraversalStage({
   const handleViewAllProductsClick = useCallback(() => {
     if (!freeNavUnlockedRef.current) {
       clearUnlockTimers();
+      const { sectionTopDocY, traversalSpanPx } = metricsRef.current;
+      const targetSpanScrollY = sectionTopDocY + traversalSpanPx;
+      setGlobalTraversalReleaseScrollY(targetSpanScrollY);
+
+      const lenis = getLenisInstance();
+      if (lenis && !isNativeScrollOnly()) {
+        lenis.stop();
+        lenis.scrollTo(targetSpanScrollY, { immediate: true, force: true });
+        (lenis as unknown as { velocity: number; lastVelocity: number }).velocity = 0;
+        (lenis as unknown as { velocity: number; lastVelocity: number }).lastVelocity = 0;
+        lenis.start();
+      } else if (typeof window !== 'undefined') {
+        window.scrollTo({ top: targetSpanScrollY, behavior: 'auto' });
+      }
+
       phaseRef.current = 'free-navigation';
       setPhase('free-navigation');
-      setGlobalTraversalPhase('free-navigation');
       revealDirectionRef.current = 'settled';
       setRevealDirection('settled');
       freeNavUnlockedRef.current = true;
@@ -470,8 +544,14 @@ export function HeroTraversalStage({
       writeHomeUnlockedSession(true);
       onFreeNavigationChangeRef.current?.(true);
       driveVoidVeilExit('reset-clear');
+
       window.requestAnimationFrame(() => {
-        getLenisInstance()?.resize();
+        const active = getLenisInstance();
+        if (active && !isNativeScrollOnly()) {
+          active.resize();
+        }
+        setGlobalTraversalPhase('free-navigation');
+        notifyPhysicsScroll();
         onViewAllProducts();
       });
       return;
@@ -893,6 +973,7 @@ export function HeroTraversalStage({
         isNative: nativeMode,
       });
       setGlobalTraversalSpanPx(traversalSpanPx);
+      setGlobalTraversalReleaseScrollY(sectionTopDocY + traversalSpanPx);
 
       metricsRef.current = {
         sectionTopDocY,
@@ -981,6 +1062,7 @@ export function HeroTraversalStage({
     };
 
     const syncFromScroll = () => {
+      if (introActiveRef.current) return;
       const currentY = getEffectiveScrollY();
       const prevY = lastMeasuredScrollYRef.current;
       const nowMs = performance.now();
@@ -1021,6 +1103,11 @@ export function HeroTraversalStage({
     };
 
     const snapFromLayout = () => {
+      if (introActiveRef.current) {
+        damper.snap(0);
+        applyFrame(0);
+        return;
+      }
       const scrolledPastTop = readScrolledPastTop();
       const targetU = computeDeterministicTraversalProgress(
         scrolledPastTop,
@@ -1129,6 +1216,179 @@ export function HeroTraversalStage({
       resizeObserver?.disconnect();
     };
   }, [clearUnlockTimers, driveVoidVeilExit, initialUnlocked, progressMv, warpFilterId]);
+
+  // Medição FLIP em cache + condução 60fps da abertura integrada (zero re-render React)
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (!introActive) {
+      const clearNode = (
+        el: HTMLElement | null,
+        clearOpacity = true,
+        clearTransform = true,
+        clearFilter = true
+      ) => {
+        if (!el) return;
+        if (clearOpacity) el.style.opacity = '';
+        if (clearTransform) el.style.transform = '';
+        if (clearFilter) el.style.filter = '';
+        el.style.pointerEvents = '';
+      };
+
+      clearNode(introRearFlipRef.current);
+      clearNode(introFrontFlipRef.current);
+      clearNode(introLogoFlipRef.current);
+      clearNode(introRearBhBirthRef.current);
+      clearNode(introFrontBhBirthRef.current);
+      clearNode(introWreathBirthRef.current);
+      clearNode(introModelRef.current);
+      clearNode(leftColRef.current, true, false, false);
+      clearNode(railRef.current, true, false, false);
+      if (scrollHintRef.current && progressRef.current <= 0.0001) {
+        scrollHintRef.current.style.opacity = '';
+      }
+
+      if (wreathRotateRef.current) {
+        if (isCssDriven && !prefersReducedMotion) {
+          wreathRotateRef.current.style.transform = '';
+          wreathRotateRef.current.style.animationDelay = `${computeSyncedCssSpinDelaySec(
+            angleDegRef.current,
+            32
+          )}s`;
+        } else {
+          wreathRotateRef.current.style.animationDelay = '';
+          wreathRotateRef.current.style.transform = `rotate(${angleDegRef.current.toFixed(3)}deg)`;
+        }
+      }
+
+      wasAtRestRef.current = false;
+      resyncRef.current?.();
+      return;
+    }
+
+    const measureFlip = () => {
+      const anchor = bhAnchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      flipOffsetRef.current = computeFlipOffset(rect, {
+        width: window.innerWidth || 1440,
+        height: window.innerHeight || 900,
+      });
+      flipMeasuredRef.current = true;
+    };
+
+    const applyIntroFrame = (frame: SingularityIntroFrame, dtSec: number) => {
+      if (!flipMeasuredRef.current) {
+        measureFlip();
+      }
+      const { tx, ty } = flipOffsetRef.current;
+      const curTx = (tx * frame.flip.centerFactor).toFixed(2);
+      const curTy = (ty * frame.flip.centerFactor).toFixed(2);
+      const flipTransform = `translate3d(${curTx}px, ${curTy}px, 0) scale(${frame.flip.scale})`;
+
+      if (introRearFlipRef.current) {
+        introRearFlipRef.current.style.transform = flipTransform;
+      }
+      if (introFrontFlipRef.current) {
+        introFrontFlipRef.current.style.transform = flipTransform;
+      }
+      if (introLogoFlipRef.current) {
+        introLogoFlipRef.current.style.transform = flipTransform;
+      }
+
+      const bhOpacity = String(frame.blackhole.opacity);
+      const bhTransform = `scale(${frame.blackhole.scale})`;
+      if (introRearBhBirthRef.current) {
+        introRearBhBirthRef.current.style.opacity = bhOpacity;
+        introRearBhBirthRef.current.style.transform = bhTransform;
+      }
+      if (introFrontBhBirthRef.current) {
+        introFrontBhBirthRef.current.style.opacity = bhOpacity;
+        introFrontBhBirthRef.current.style.transform = bhTransform;
+      }
+
+      if (introLogoCollapseRef.current) {
+        const sx = frame.logo.scale;
+        const sy = Number((frame.logo.scale * frame.logo.stretchY).toFixed(4));
+        introLogoCollapseRef.current.style.opacity = String(frame.logo.opacity);
+        introLogoCollapseRef.current.style.transform = `scale(${sx}, ${sy})`;
+        introLogoCollapseRef.current.style.filter =
+          frame.logo.blurPx > 0.05 ? `blur(${frame.logo.blurPx}px)` : 'none';
+      }
+      if (introLogoDarkLayerRef.current) {
+        introLogoDarkLayerRef.current.style.opacity = String(
+          Number((1 - frame.logo.lightHorizonMix).toFixed(4))
+        );
+      }
+      if (introLogoLightLayerRef.current) {
+        introLogoLightLayerRef.current.style.opacity = String(frame.logo.lightHorizonMix);
+      }
+
+      if (introWreathBirthRef.current) {
+        introWreathBirthRef.current.style.opacity = String(frame.wreath.opacity);
+        introWreathBirthRef.current.style.transform = `scale(${frame.wreath.scale})`;
+      }
+
+      if (frame.wreath.speedMultiplier > 0 && dtSec > 0 && !prefersReducedMotionRef.current) {
+        const restDegPerSec = isCssDrivenRef.current ? 360 / 32 : 3.6;
+        angleDegRef.current =
+          (angleDegRef.current - restDegPerSec * frame.wreath.speedMultiplier * dtSec) % 360000;
+      }
+      if (wreathRotateRef.current) {
+        wreathRotateRef.current.style.transform = `rotate(${angleDegRef.current.toFixed(3)}deg)`;
+      }
+
+      const isMobileViewport = window.innerWidth < 768 || isNativeScrollOnly();
+      if (introModelRef.current) {
+        introModelRef.current.style.opacity = String(frame.model.opacity);
+        introModelRef.current.style.transform = `translate3d(0px, ${frame.model.yPx}px, 0)`;
+        introModelRef.current.style.filter =
+          !isMobileViewport && frame.model.blurPx > 0.05
+            ? `blur(${frame.model.blurPx}px)`
+            : 'none';
+      }
+
+      if (leftColRef.current) {
+        leftColRef.current.style.opacity = String(frame.chrome.heroContentOpacity);
+        leftColRef.current.style.pointerEvents =
+          frame.chrome.heroContentOpacity > 0.65 ? 'auto' : 'none';
+      }
+      if (railRef.current) {
+        railRef.current.style.opacity = String(frame.chrome.heroContentOpacity);
+      }
+      if (scrollHintRef.current) {
+        scrollHintRef.current.style.opacity = String(frame.chrome.heroContentOpacity);
+      }
+    };
+
+    measureFlip();
+    applyIntroFrame(getLatestIntroFrame(), 0);
+
+    const onIntroResize = () => {
+      measureFlip();
+      applyIntroFrame(getLatestIntroFrame(), 0);
+    };
+
+    window.addEventListener('resize', onIntroResize, { passive: true });
+    let flipObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      flipObserver = new ResizeObserver(onIntroResize);
+      if (bhAnchorRef.current) flipObserver.observe(bhAnchorRef.current);
+      if (compositionRef.current) flipObserver.observe(compositionRef.current);
+    }
+    if (document.fonts?.ready) {
+      void document.fonts.ready.then(onIntroResize);
+    }
+
+    const unsubIntro = subscribeIntroTick(applyIntroFrame);
+
+    return () => {
+      unsubIntro();
+      flipObserver?.disconnect();
+      window.removeEventListener('resize', onIntroResize);
+    };
+  }, [introActive, isCssDriven, prefersReducedMotion, subscribeIntroTick, getLatestIntroFrame]);
 
   useEffect(() => {
     if (!portalRevealed) return;
@@ -1296,6 +1556,7 @@ export function HeroTraversalStage({
               {/* Coluna Esquerda: Texto & CTA */}
               <div
                 ref={leftColRef}
+                style={introActive ? { opacity: 0, pointerEvents: 'none' } : undefined}
                 className="lg:col-span-6 xl:col-span-6 relative z-30 space-y-3 sm:space-y-6 lg:space-y-8"
               >
                 <div
@@ -1303,7 +1564,9 @@ export function HeroTraversalStage({
                   className="will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <p
-                    className="limiar-enter text-[11px] sm:text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]"
+                    className={`${
+                      mountedWithIntro ? '' : 'limiar-enter'
+                    } text-[11px] sm:text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]`}
                     style={{ animationDelay: '0ms' }}
                   >
                     {slide.eyebrow}
@@ -1315,7 +1578,9 @@ export function HeroTraversalStage({
                   className="will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <div
-                    className="limiar-enter flex items-start gap-4"
+                    className={`${
+                      mountedWithIntro ? '' : 'limiar-enter'
+                    } flex items-start gap-4`}
                     style={{ animationDelay: '45ms' }}
                   >
                     <h1 className="font-display font-light text-3xl sm:text-5xl xl:text-[64px] leading-[1.03] tracking-[0.03em] text-[var(--text-primary)] uppercase text-balance max-w-xl">
@@ -1330,7 +1595,9 @@ export function HeroTraversalStage({
                   className="will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <p
-                    className="limiar-enter text-sm sm:text-base lg:text-lg text-[var(--text-secondary)] max-w-md leading-relaxed"
+                    className={`${
+                      mountedWithIntro ? '' : 'limiar-enter'
+                    } text-sm sm:text-base lg:text-lg text-[var(--text-secondary)] max-w-md leading-relaxed`}
                     style={{ animationDelay: '90ms' }}
                   >
                     {slide.description}
@@ -1342,7 +1609,7 @@ export function HeroTraversalStage({
                   className="pt-0.5 sm:pt-1 will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <div
-                    className="limiar-enter"
+                    className={mountedWithIntro ? undefined : 'limiar-enter'}
                     style={{ animationDelay: '135ms' }}
                   >
                     <ThresholdMagnetic maxPull={4}>
@@ -1358,7 +1625,9 @@ export function HeroTraversalStage({
                   className="pt-1 sm:pt-4 will-change-transform origin-right limiar-hero-text-collapse"
                 >
                   <div
-                    className="limiar-enter flex items-center gap-4 text-[11px] tracking-[0.2em] text-[var(--text-muted)] tabular-nums"
+                    className={`${
+                      mountedWithIntro ? '' : 'limiar-enter'
+                    } flex items-center gap-4 text-[11px] tracking-[0.2em] text-[var(--text-muted)] tabular-nums`}
                     style={{ animationDelay: '180ms' }}
                   >
                     <span>0{activeSlideIndex + 1}</span>
@@ -1379,6 +1648,12 @@ export function HeroTraversalStage({
                   modelAlt={slide.imageAlt}
                   progressMv={progressMv}
                   isCssDriven={isCssDriven}
+                  introActive={introActive}
+                  onBlackHoleError={() => {
+                    if (introActiveRef.current) {
+                      markPortalRevealed();
+                    }
+                  }}
                   collapseRefs={{
                     compositionRef,
                     blackholeOuterRef,
@@ -1388,11 +1663,25 @@ export function HeroTraversalStage({
                     wreathBlurRef,
                     modelCollapseRef,
                   }}
+                  introRefs={{
+                    bhAnchorRef,
+                    introRearFlipRef,
+                    introFrontFlipRef,
+                    introLogoFlipRef,
+                    introRearBhBirthRef,
+                    introFrontBhBirthRef,
+                    introWreathBirthRef,
+                    introLogoCollapseRef,
+                    introLogoDarkLayerRef,
+                    introLogoLightLayerRef,
+                    introModelRef,
+                  }}
                 />
 
                 {/* Rail lateral discreto */}
                 <div
                   ref={railRef}
+                  style={introActive ? { opacity: 0 } : undefined}
                   aria-hidden="true"
                   className="hidden xl:flex flex-col items-center gap-3 absolute right-0 top-1/2 -translate-y-1/2 z-30 text-[var(--text-muted)] will-change-transform"
                 >
@@ -1410,6 +1699,7 @@ export function HeroTraversalStage({
         {/* Indicador sutil de travessia em repouso */}
         <div
           ref={scrollHintRef}
+          style={introActive ? { opacity: 0 } : undefined}
           aria-hidden="true"
           className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 z-20 hidden sm:flex flex-col items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-[var(--text-muted)] limiar-scroll-hint"
         >

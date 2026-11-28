@@ -13,15 +13,18 @@ interface ProceduralBlackHoleProps {
   progressMv?: MotionValue<number>;
   frontContainerRef?: React.RefObject<HTMLDivElement | null>;
   className?: string;
+  onEngineError?: () => void;
 }
 
 export function ProceduralBlackHole({
   progressMv,
   frontContainerRef,
   className = '',
+  onEngineError,
 }: ProceduralBlackHoleProps) {
   const { theme } = useTheme();
-  const { nx, ny, portalRevealed } = useThresholdPointer();
+  const { nx, ny, portalRevealed, introEngineActive } = useThresholdPointer();
+  const engineUnlocked = portalRevealed || introEngineActive;
   const isLightMode = theme === 'light';
 
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -39,9 +42,9 @@ export function ProceduralBlackHole({
     p: number,
     visible: boolean,
     tab: boolean,
-    revealed: boolean
+    unlocked: boolean
   ): BlackHoleOperationalState => {
-    if (!revealed) return 'inactive';
+    if (!unlocked) return 'inactive';
     return resolveOperationalState({
       progress: p,
       inViewport: visible,
@@ -50,18 +53,20 @@ export function ProceduralBlackHole({
   };
 
   const [opState, setOpState] = useState<BlackHoleOperationalState>(() =>
-    computeEffectiveState(progressMv?.get() ?? 0, true, true, portalRevealed)
+    computeEffectiveState(progressMv?.get() ?? 0, true, true, engineUnlocked)
   );
 
-  const portalRevealedRef = useRef(portalRevealed);
+  const engineUnlockedRef = useRef(engineUnlocked);
   const inViewportRef = useRef(inViewport);
   const tabVisibleRef = useRef(tabVisible);
   const opStateRef = useRef(opState);
+  const onEngineErrorRef = useRef(onEngineError);
 
-  portalRevealedRef.current = portalRevealed;
+  engineUnlockedRef.current = engineUnlocked;
   inViewportRef.current = inViewport;
   tabVisibleRef.current = tabVisible;
   opStateRef.current = opState;
+  onEngineErrorRef.current = onEngineError;
 
   // Sincroniza visibilidade da aba
   useEffect(() => {
@@ -93,11 +98,11 @@ export function ProceduralBlackHole({
   // Recalcula estado operacional e atualiza motor
   useEffect(() => {
     const progress = progressMv?.get() ?? 0;
-    const nextState = computeEffectiveState(progress, inViewport, tabVisible, portalRevealed);
+    const nextState = computeEffectiveState(progress, inViewport, tabVisible, engineUnlocked);
     opStateRef.current = nextState;
     setOpState(nextState);
     engineRef.current?.setState(nextState);
-  }, [inViewport, tabVisible, portalRevealed, progressMv]);
+  }, [inViewport, tabVisible, engineUnlocked, progressMv]);
 
   // Atualiza modo de tema no shader sem reiniciar o motor
   useEffect(() => {
@@ -171,7 +176,7 @@ export function ProceduralBlackHole({
           currentProgress,
           inViewportRef.current,
           tabVisibleRef.current,
-          portalRevealedRef.current
+          engineUnlockedRef.current
         );
         opStateRef.current = initialState;
         setOpState(initialState);
@@ -192,6 +197,7 @@ export function ProceduralBlackHole({
         console.error('[Limiar BlackHole] Erro na inicialização WebGL:', err);
         if (!cancelled) {
           setWebglReady(false);
+          onEngineErrorRef.current?.();
         }
       }
     };
@@ -242,7 +248,7 @@ export function ProceduralBlackHole({
         p,
         inViewportRef.current,
         tabVisibleRef.current,
-        portalRevealedRef.current
+        engineUnlockedRef.current
       );
       if (nextState !== opStateRef.current) {
         opStateRef.current = nextState;

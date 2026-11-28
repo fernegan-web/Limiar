@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   motion,
   useMotionValue,
@@ -9,12 +9,13 @@ import { useRouter } from '../../context/RouterContext';
 import {
   getEffectiveScrollY,
   getGlobalTraversalPhase,
-  getGlobalTraversalSpanPx,
+  getGlobalTraversalReleaseScrollY,
   isNativeScrollOnly,
   subscribePhysicsScroll,
   subscribeTraversalPhase,
   type TraversalPhase,
 } from '../../motion/scrollPhysics';
+import type { SingularityIntroFrame } from '../../motion/singularityIntroTimeline';
 import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import {
   GLOBAL_NEOTRIBAL_BG_MOTION,
@@ -22,6 +23,8 @@ import {
 
 const GLOBAL_NEOTRIBAL_ASSET =
   '/assets/aistudio/Ornamentos_Cybertribais_Luminosos_faef8fd1.png';
+
+const DESKTOP_PARALLAX_FACTOR = 0.28;
 
 /**
  * Camada decorativa neotribal global:
@@ -40,10 +43,37 @@ const GLOBAL_NEOTRIBAL_ASSET =
 export function NeotribalGlobalBackground() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const { nx, ny, reducedMotion } = useThresholdPointer();
+  const {
+    nx,
+    ny,
+    reducedMotion,
+    introActive,
+    subscribeIntroTick,
+    getLatestIntroFrame,
+  } = useThresholdPointer();
   const { pathname } = useRouter();
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    if (!introActive) {
+      el.style.opacity = '';
+      el.style.visibility = '';
+      return;
+    }
+
+    const applyBg = (frame: SingularityIntroFrame) => {
+      const op = frame.chrome.atmosphereOpacity;
+      el.style.opacity = String(op);
+      el.style.visibility = op <= 0.001 ? 'hidden' : 'visible';
+    };
+
+    applyBg(getLatestIntroFrame());
+    return subscribeIntroTick(applyBg);
+  }, [introActive, subscribeIntroTick, getLatestIntroFrame]);
 
   const [isMobile, setIsMobile] = useState<boolean>(() =>
     typeof window !== 'undefined'
@@ -104,20 +134,16 @@ export function NeotribalGlobalBackground() {
     }
 
     const scrollY = getEffectiveScrollY();
-    const releaseScrollY = isHome ? getGlobalTraversalSpanPx() : 0;
+    const releaseScrollY = isHome ? getGlobalTraversalReleaseScrollY() : 0;
     const freeScroll = Math.max(0, scrollY - releaseScrollY);
 
-    if (freeScroll <= 0) {
+    if (freeScroll <= 0.5) {
       scrollOffsetY.set(0);
       return;
     }
 
-    // Como o container é position: fixed, a altura total da página vem de documentElement.scrollHeight
     const vh = window.innerHeight || 900;
     const vw = window.innerWidth || 1440;
-    const docH = document.documentElement.scrollHeight;
-    const maxDocScroll = Math.max(0, docH - vh);
-    const freeScrollableDistance = Math.max(1, maxDocScroll - releaseScrollY);
 
     // Dimensões reais da imagem neotribal no desktop (aspect ratio 1.5 sobre largura 103vw)
     const imgEl = imageRef.current;
@@ -127,9 +153,7 @@ export function NeotribalGlobalBackground() {
         : Math.round(vw * 1.03 * 1.5);
     const maxImageOverflow = Math.max(0, naturalImageHeight - vh);
 
-    const parallaxFactor =
-      freeScrollableDistance > 0 ? maxImageOverflow / freeScrollableDistance : 0;
-    const backgroundY = -Math.min(maxImageOverflow, freeScroll * parallaxFactor);
+    const backgroundY = -Math.min(maxImageOverflow, freeScroll * DESKTOP_PARALLAX_FACTOR);
 
     scrollOffsetY.set(Number(backgroundY.toFixed(2)));
   };
@@ -177,6 +201,7 @@ export function NeotribalGlobalBackground() {
   return (
     <div
       ref={containerRef}
+      style={introActive ? { opacity: 0, visibility: 'hidden' } : undefined}
       aria-hidden="true"
       className="pointer-events-none select-none fixed inset-0 overflow-hidden z-[2]"
     >

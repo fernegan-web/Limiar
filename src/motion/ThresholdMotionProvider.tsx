@@ -14,14 +14,28 @@ import {
   setLenisInstance,
   supportsCssScrollDrivenAnimations,
 } from './scrollPhysics';
+import {
+  INTRO_SEEN_SESSION_KEY,
+  SINGULARITY_INTRO_DURATION_MS,
+  SINGULARITY_INTRO_FAILSAFE_MS,
+  computeSingularityIntroFrame,
+  shouldPlaySingularityIntro,
+  type SingularityIntroFrame,
+} from './singularityIntroTimeline';
 import { THRESHOLD_SPRING, computeNormalizedPointer } from './thresholdConfig';
+
+export type IntroTickListener = (frame: SingularityIntroFrame, dtSec: number) => void;
 
 interface ThresholdPointerContextValue {
   nx: MotionValue<number>;
   ny: MotionValue<number>;
   reducedMotion: boolean;
+  introActive: boolean;
+  introEngineActive: boolean;
   portalRevealed: boolean;
   markPortalRevealed: () => void;
+  subscribeIntroTick: (listener: IntroTickListener) => () => void;
+  getLatestIntroFrame: () => SingularityIntroFrame;
 }
 
 const ThresholdPointerContext = createContext<ThresholdPointerContextValue | null>(null);
@@ -34,28 +48,236 @@ export function useThresholdPointer(): ThresholdPointerContextValue {
   return ctx;
 }
 
+function readInitialIntroActive(): boolean {
+  if (typeof window === 'undefined') return false;
+  let sessionSeen = false;
+  try {
+    sessionSeen = window.sessionStorage.getItem(INTRO_SEEN_SESSION_KEY) === '1';
+  } catch {
+    sessionSeen = false;
+  }
+  const reducedMotion =
+    typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false;
+
+  return shouldPlaySingularityIntro({
+    pathname: window.location.pathname,
+    search: window.location.search,
+    hash: window.location.hash,
+    reducedMotion,
+    sessionSeen,
+  });
+}
+
+function markIntroSeenSession(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(INTRO_SEEN_SESSION_KEY, '1');
+  } catch {
+    // noop
+  }
+}
+
 export function ThresholdMotionProvider({ children }: { children: React.ReactNode }) {
-  const [portalRevealed, setPortalRevealed] = useState(false);
+  const [introActive, setIntroActive] = useState<boolean>(() => readInitialIntroActive());
+  const [introEngineActive, setIntroEngineActive] = useState<boolean>(() => !readInitialIntroActive());
+  const [portalRevealed, setPortalRevealed] = useState<boolean>(() => !readInitialIntroActive());
   const [nativeScrollOnly, setNativeScrollOnly] = useState<boolean>(() =>
     isNativeScrollOnly()
   );
   const lenisRef = useRef<Lenis | null>(null);
+  const introListenersRef = useRef<Set<IntroTickListener>>(new Set());
+  const introActiveRef = useRef(introActive);
+  introActiveRef.current = introActive;
+
+  const latestIntroFrameRef = useRef<SingularityIntroFrame>(
+    computeSingularityIntroFrame(
+      introActive ? 0 : SINGULARITY_INTRO_DURATION_MS,
+      nativeScrollOnly
+    )
+  );
+
+  const subscribeIntroTick = useCallback((listener: IntroTickListener) => {
+    introListenersRef.current.add(listener);
+    return () => {
+      introListenersRef.current.delete(listener);
+    };
+  }, []);
+
+  const getLatestIntroFrame = useCallback(() => latestIntroFrameRef.current, []);
 
   const markPortalRevealed = useCallback(() => {
+    markIntroSeenSession();
+    const wasActive = introActiveRef.current;
+    const isMob = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+    const finalFrame = computeSingularityIntroFrame(SINGULARITY_INTRO_DURATION_MS, isMob);
+    latestIntroFrameRef.current = finalFrame;
+
+    if (wasActive) {
+      introListenersRef.current.forEach((listener) => {
+        listener(finalFrame, 0);
+      });
+    }
+
+    introActiveRef.current = false;
+    setIntroActive(false);
+    setIntroEngineActive(true);
     setPortalRevealed(true);
+
     if (typeof document !== 'undefined') {
       document.documentElement.classList.remove('limiar-intro-holding');
+      document.documentElement.dataset.introPhase = 'complete';
+    }
+    if (wasActive && typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      const activeLenis = lenisRef.current;
+      if (activeLenis) {
+        activeLenis.scrollTo(0, { immediate: true, force: true });
+        (activeLenis as unknown as { velocity: number; lastVelocity: number }).velocity = 0;
+        (activeLenis as unknown as { velocity: number; lastVelocity: number }).lastVelocity = 0;
+      }
     }
   }, []);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const shouldHold = !portalRevealed;
+    const shouldHold = introActive && !portalRevealed;
     document.documentElement.classList.toggle('limiar-intro-holding', shouldHold);
+    if (!shouldHold) {
+      document.documentElement.dataset.introPhase = 'complete';
+    }
     return () => {
       document.documentElement.classList.remove('limiar-intro-holding');
     };
-  }, [portalRevealed]);
+  }, [introActive, portalRevealed]);
+
+  // Orquestração unificada da abertura (~5s) com bloqueio de scroll e skip intencional seguro
+  useEffect(() => {
+    if (typeof window === 'undefined' || !introActive) return;
+
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    let rafId = 0;
+    let finished = false;
+    let startTime = 0;
+    let lastFrameTime = 0;
+    let engineWoken = false;
+
+    const finishIntro = () => {
+      if (finished) return;
+      finished = true;
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+      markPortalRevealed();
+    };
+
+    const emitFrame = (elapsedMs: number, dtSec: number) => {
+      const isMob = window.innerWidth < 768 || isNativeScrollOnly();
+      const frame = computeSingularityIntroFrame(elapsedMs, isMob);
+      latestIntroFrameRef.current = frame;
+      document.documentElement.dataset.introPhase = frame.phase;
+
+      if (frame.engineActive && !engineWoken) {
+        engineWoken = true;
+        setIntroEngineActive(true);
+      }
+
+      introListenersRef.current.forEach((listener) => {
+        listener(frame, dtSec);
+      });
+
+      if (frame.finished) {
+        finishIntro();
+      }
+    };
+
+    // Estado inicial exato (t = 0ms -> O Vazio)
+    emitFrame(0, 0);
+
+    const tick = (now: number) => {
+      if (finished) return;
+      if (!startTime) {
+        startTime = now;
+        lastFrameTime = now;
+      }
+      const elapsedMs = now - startTime;
+      const dtSec = Math.min(Math.max((now - lastFrameTime) / 1000, 0), 0.05);
+      lastFrameTime = now;
+
+      emitFrame(elapsedMs, dtSec);
+
+      if (!finished && elapsedMs < SINGULARITY_INTRO_DURATION_MS) {
+        rafId = window.requestAnimationFrame(tick);
+      }
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    const failsafeId = window.setTimeout(finishIntro, SINGULARITY_INTRO_FAILSAFE_MS);
+
+    // Bloqueia wheel/touchmove durante a intro para não acumular gestos de scroll para a travessia
+    const preventWheel = (e: WheelEvent) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    const preventTouchScroll = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+    };
+
+    // Permite ignorar a intro por interação intencional (teclado ou clique/toque curto, sem UI extra)
+    let pointerDownX = 0;
+    let pointerDownY = 0;
+    let pointerDownActive = false;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      pointerDownActive = true;
+      pointerDownX = e.clientX;
+      pointerDownY = e.clientY;
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!pointerDownActive) return;
+      pointerDownActive = false;
+      const dist = Math.hypot(e.clientX - pointerDownX, e.clientY - pointerDownY);
+      if (dist < 10) {
+        finishIntro();
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+        if (e.key === ' ') e.preventDefault();
+        finishIntro();
+      }
+    };
+
+    window.addEventListener('wheel', preventWheel, { passive: false });
+    window.addEventListener('touchmove', preventTouchScroll, { passive: false });
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('pointerup', onPointerUp, { passive: true });
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      finished = true;
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.clearTimeout(failsafeId);
+      window.removeEventListener('wheel', preventWheel);
+      window.removeEventListener('touchmove', preventTouchScroll);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('keydown', onKeyDown);
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, [introActive, markPortalRevealed]);
 
   // Monitora alterações de viewport/ponteiro (rotação, troca de modo ou emulador)
   useEffect(() => {
@@ -186,12 +408,22 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
     };
   }, [nativeScrollOnly]);
 
+  const prevPortalRevealedRef = useRef(portalRevealed);
+
   useEffect(() => {
+    const wasRevealed = prevPortalRevealedRef.current;
+    prevPortalRevealedRef.current = portalRevealed;
+
     if (nativeScrollOnly || !lenisRef.current || typeof document === 'undefined') return;
     const lockedByOverlay = document.documentElement.dataset.scrollLocked === 'true';
     if (!portalRevealed || lockedByOverlay) {
       lenisRef.current.stop();
     } else {
+      if (!wasRevealed) {
+        lenisRef.current.scrollTo(0, { immediate: true, force: true });
+        (lenisRef.current as unknown as { velocity: number; lastVelocity: number }).velocity = 0;
+        (lenisRef.current as unknown as { velocity: number; lastVelocity: number }).lastVelocity = 0;
+      }
       lenisRef.current.start();
     }
   }, [portalRevealed, nativeScrollOnly]);
@@ -242,7 +474,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
       if (auraRef.current) {
         auraRef.current.style.setProperty('--cursor-x', `${mapped.px}px`);
         auraRef.current.style.setProperty('--cursor-y', `${mapped.py}px`);
-        auraRef.current.style.opacity = '1';
+        auraRef.current.style.opacity = introActiveRef.current ? '0' : '1';
       }
     };
 
@@ -281,8 +513,12 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
           nx,
           ny,
           reducedMotion: false,
+          introActive,
+          introEngineActive,
           portalRevealed,
           markPortalRevealed,
+          subscribeIntroTick,
+          getLatestIntroFrame,
         }}
       >
         {/* Iluminação atmosférica sutil que acompanha o cursor sem poluir o conteúdo */}
@@ -293,7 +529,7 @@ export function ThresholdMotionProvider({ children }: { children: React.ReactNod
         />
 
         {/* Barra de travessia de scroll discreta no topo absoluto */}
-        <ThresholdScrollProgress nativeScrollOnly={nativeScrollOnly} />
+        {!introActive && <ThresholdScrollProgress nativeScrollOnly={nativeScrollOnly} />}
 
         {children}
       </ThresholdPointerContext.Provider>

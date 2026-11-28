@@ -107,6 +107,7 @@ export type TraversalPhaseListener = (phase: TraversalPhase) => void;
 
 let currentTraversalPhase: TraversalPhase = 'hero-fixed';
 let currentTraversalSpanPx = 0;
+let currentTraversalReleaseScrollY = 0;
 const traversalPhaseListeners = new Set<TraversalPhaseListener>();
 
 export function setGlobalTraversalPhase(phase: TraversalPhase): void {
@@ -145,6 +146,15 @@ export function getGlobalTraversalSpanPx(): number {
     });
   }
   return 840;
+}
+
+export function setGlobalTraversalReleaseScrollY(targetScrollY: number): void {
+  currentTraversalReleaseScrollY = targetScrollY;
+}
+
+export function getGlobalTraversalReleaseScrollY(): number {
+  if (currentTraversalReleaseScrollY > 0) return currentTraversalReleaseScrollY;
+  return getGlobalTraversalSpanPx();
 }
 
 export const TRAVERSAL_HANDOFF_PROGRESS = 0.72;
@@ -187,6 +197,7 @@ export interface FreeNavigationUnlockInput {
   lastScrollTs: number;
   nowMs: number;
   settleMs?: number;
+  isLenisMoving?: boolean;
 }
 
 export function canUnlockFreeNavigation({
@@ -196,8 +207,10 @@ export function canUnlockFreeNavigation({
   lastScrollTs,
   nowMs,
   settleMs = 150,
+  isLenisMoving = false,
 }: FreeNavigationUnlockInput): boolean {
   if (!revealCompleted || touchActive) return false;
+  if (isLenisMoving) return false;
   if (nowMs - lastDownwardIntentTs < settleMs) return false;
   if (nowMs - lastScrollTs < settleMs) return false;
   return true;

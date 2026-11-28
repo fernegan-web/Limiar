@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Menu, Moon, Search, ShoppingBag, Sun, User, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useRouter } from '../../context/RouterContext';
 import { useTheme } from '../../context/ThemeContext';
+import type { SingularityIntroFrame } from '../../motion/singularityIntroTimeline';
+import { useThresholdPointer } from '../../motion/ThresholdMotionProvider';
 import { THRESHOLD_EASE, THRESHOLD_SPRING } from '../../motion/thresholdConfig';
 import { LimiarLogo } from '../ui/LimiarLogo';
 
@@ -26,7 +28,31 @@ export function Navbar({ onOpenSearch, onOpenAccount, overlay = false }: NavbarP
   const { theme, toggleTheme } = useTheme();
   const { isAuthenticated, member } = useAuth();
   const { totalItems, openDrawer } = useCart();
+  const { introActive, subscribeIntroTick, getLatestIntroFrame } = useThresholdPointer();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    const headerEl = headerRef.current;
+    if (!headerEl) return;
+
+    if (!introActive) {
+      headerEl.style.opacity = '';
+      headerEl.style.visibility = '';
+      headerEl.style.pointerEvents = '';
+      return;
+    }
+
+    const applyNav = (frame: SingularityIntroFrame) => {
+      const op = frame.chrome.navbarOpacity;
+      headerEl.style.opacity = String(op);
+      headerEl.style.visibility = op <= 0.001 ? 'hidden' : 'visible';
+      headerEl.style.pointerEvents = op > 0.65 ? 'auto' : 'none';
+    };
+
+    applyNav(getLatestIntroFrame());
+    return subscribeIntroTick(applyNav);
+  }, [introActive, subscribeIntroTick, getLatestIntroFrame]);
 
   const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     e.preventDefault();
@@ -36,6 +62,12 @@ export function Navbar({ onOpenSearch, onOpenAccount, overlay = false }: NavbarP
 
   return (
     <header
+      ref={headerRef}
+      style={
+        introActive
+          ? { opacity: 0, visibility: 'hidden', pointerEvents: 'none' }
+          : undefined
+      }
       className={`${
         overlay ? 'fixed top-0 left-0 right-0' : 'sticky top-0'
       } z-50 w-full transition-colors duration-300`}

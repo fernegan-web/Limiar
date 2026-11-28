@@ -11,11 +11,13 @@ import {
   computeTraversalSpanPx,
   getEffectiveScrollY,
   getGlobalTraversalPhase,
+  getGlobalTraversalReleaseScrollY,
   getGlobalTraversalSpanPx,
   isNativeScrollOnly,
   mapTraversalSpanToTimelineProgress,
   mapUnitProgressToTimeline,
   setGlobalTraversalPhase,
+  setGlobalTraversalReleaseScrollY,
   setGlobalTraversalSpanPx,
   setLenisInstance,
   shouldAcceptMobileViewportHeightUpdate,
@@ -336,6 +338,39 @@ test('global traversal phase and span listeners notify synchronously on state ch
 
   setGlobalTraversalSpanPx(920);
   assert.equal(getGlobalTraversalSpanPx(), 920);
+
+  // setGlobalTraversalReleaseScrollY overrides bare span with absolute document scrollY
+  setGlobalTraversalReleaseScrollY(1840);
+  assert.equal(getGlobalTraversalReleaseScrollY(), 1840);
 });
+
+test('canUnlockFreeNavigation blocks unlock if Lenis has residual velocity or in-flight animation', () => {
+  // Reveal complete and user stopped wheel input, but Lenis is still decelerating
+  assert.equal(
+    canUnlockFreeNavigation({
+      revealCompleted: true,
+      touchActive: false,
+      lastDownwardIntentTs: 800,
+      lastScrollTs: 800,
+      nowMs: 1000,
+      isLenisMoving: true,
+    }),
+    false
+  );
+
+  // Reveal complete, settle threshold met, and Lenis fully at rest
+  assert.equal(
+    canUnlockFreeNavigation({
+      revealCompleted: true,
+      touchActive: false,
+      lastDownwardIntentTs: 800,
+      lastScrollTs: 800,
+      nowMs: 1000,
+      isLenisMoving: false,
+    }),
+    true
+  );
+});
+
 
 

@@ -1,7 +1,6 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Footer } from './components/layout/Footer';
 import { Navbar } from './components/layout/Navbar';
-import { PortalIntroOverlay } from './components/intro/PortalIntroOverlay';
 import { NeotribalGlobalBackground } from './components/ornaments/NeotribalGlobalBackground';
 import { OrbitalCursor } from './components/ui/OrbitalCursor';
 import { WhatsAppFloatingButton } from './components/ui/WhatsAppFloatingButton';
@@ -10,6 +9,7 @@ import { CartProvider, useCart } from './context/CartContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { PortalRouteTransition } from './motion/PortalRouteTransition';
+import type { SingularityIntroFrame } from './motion/singularityIntroTimeline';
 import {
   ThresholdMotionProvider,
   useThresholdPointer,
@@ -47,21 +47,62 @@ const AccountModal = lazy(() =>
 
 function AppShell() {
   const { pathname, commitScroll } = useRouter();
-  const { markPortalRevealed } = useThresholdPointer();
+  const {
+    introActive,
+    markPortalRevealed,
+    subscribeIntroTick,
+    getLatestIntroFrame,
+  } = useThresholdPointer();
   const { isDrawerOpen, items, checkoutReturnNotice, clearCheckoutReturnNotice } = useCart();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMounted, setSearchMounted] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountMounted, setAccountMounted] = useState(false);
-  const isCallbackPath =
-    typeof window !== 'undefined' && window.location.pathname === '/auth/callback';
-  const [introActive, setIntroActive] = useState(!isCallbackPath);
+
+  const atmosphereRef = useRef<HTMLDivElement | null>(null);
+  const grainRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (isCallbackPath) {
+    const isHome = pathname === '/' || pathname === '';
+    if (!isHome && introActive) {
       markPortalRevealed();
     }
-  }, [isCallbackPath, markPortalRevealed]);
+  }, [pathname, introActive, markPortalRevealed]);
+
+  useLayoutEffect(() => {
+    const atmosphereEl = atmosphereRef.current;
+    const grainEl = grainRef.current;
+
+    if (!introActive) {
+      if (atmosphereEl) {
+        atmosphereEl.style.opacity = '';
+        atmosphereEl.style.visibility = '';
+        atmosphereEl.style.transition = '';
+      }
+      if (grainEl) {
+        grainEl.style.opacity = '';
+        grainEl.style.visibility = '';
+      }
+      return;
+    }
+
+    const applyChrome = (frame: SingularityIntroFrame) => {
+      const op = frame.chrome.atmosphereOpacity;
+      if (atmosphereEl) {
+        atmosphereEl.style.transition = 'none';
+        atmosphereEl.style.opacity = String(op);
+        atmosphereEl.style.visibility = op <= 0.001 ? 'hidden' : 'visible';
+      }
+      if (grainEl) {
+        grainEl.style.visibility = op <= 0.001 ? 'hidden' : 'visible';
+        grainEl.style.opacity =
+          op <= 0.001 ? '0' : `calc(var(--grain-opacity) * ${op})`;
+      }
+    };
+
+    applyChrome(getLatestIntroFrame());
+    return subscribeIntroTick(applyChrome);
+  }, [introActive, subscribeIntroTick, getLatestIntroFrame]);
 
   const shouldMountCart = isDrawerOpen || items.length > 0;
 
@@ -121,11 +162,21 @@ function AppShell() {
   return (
     <div className="relative min-h-screen flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)] overflow-x-clip">
       {/* Camadas atmosféricas discretas (adaptáveis aos dois temas) */}
-      <div className="limiar-atmosphere" aria-hidden="true" />
+      <div
+        ref={atmosphereRef}
+        style={introActive ? { opacity: 0, visibility: 'hidden' } : undefined}
+        className="limiar-atmosphere"
+        aria-hidden="true"
+      />
       {/* Camada neotribal interativa global */}
       <NeotribalGlobalBackground />
       {/* Textura granulada analógica sutil */}
-      <div className="limiar-grain" aria-hidden="true" />
+      <div
+        ref={grainRef}
+        style={introActive ? { opacity: 0, visibility: 'hidden' } : undefined}
+        className="limiar-grain"
+        aria-hidden="true"
+      />
 
       <Navbar
         overlay={isHomeRoute}
@@ -182,17 +233,8 @@ function AppShell() {
           <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)} />
         </Suspense>
       )}
-      <WhatsAppFloatingButton hidden={searchOpen || accountOpen || isDrawerOpen} />
+      <WhatsAppFloatingButton hidden={introActive || searchOpen || accountOpen || isDrawerOpen} />
       <OrbitalCursor />
-      {introActive && (
-        <PortalIntroOverlay
-          onPortalOpen={markPortalRevealed}
-          onComplete={() => {
-            markPortalRevealed();
-            setIntroActive(false);
-          }}
-        />
-      )}
     </div>
   );
 }
