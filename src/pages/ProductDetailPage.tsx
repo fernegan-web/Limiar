@@ -1,7 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle, ArrowLeft, Check, ChevronDown, MessageCircle, Minus, Plus } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Heart,
+  MessageCircle,
+  Minus,
+  Plus,
+} from 'lucide-react';
 import DOMPurify from 'dompurify';
+import { ProductCarousel } from '../components/commerce/ProductCarousel';
 import {
   CybersigilismCorner,
   LimiarStar,
@@ -10,8 +20,12 @@ import { ResilientImage } from '../components/ui/ResilientImage';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
 import { THRESHOLD_EASE } from '../motion/thresholdConfig';
 import { useCart } from '../context/CartContext';
+import { useFavorites } from '../context/FavoritesContext';
+import { usePersonalization } from '../context/PersonalizationContext';
 import { useRouter } from '../context/RouterContext';
+import { trackAdViewContent } from '../services/analytics/adTrackingService';
 import {
+  fetchCatalogSnapshot,
   fetchProductBySlug,
   isOptionChoiceCompatibleWithSelection,
   isOptionChoiceGloballyInStock,
@@ -89,8 +103,11 @@ function getInitialChoices(product: Product, displayOptions: ProductOption[]): R
 export function ProductDetailPage({ slug }: ProductDetailPageProps) {
   const { navigate } = useRouter();
   const { addItem } = useCart();
+  const { favoriteIds, isFavorite, toggleFavorite } = useFavorites();
+  const { recordProductView, getRecommendations } = usePersonalization();
 
   const [product, setProduct] = useState<Product | null>(null);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
@@ -104,13 +121,20 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
     setLoadError(null);
     setActiveImageIdx(0);
     setQuantity(1);
-    fetchProductBySlug(slug)
-      .then((found) => {
+    Promise.all([
+      fetchProductBySlug(slug),
+      fetchCatalogSnapshot().catch(() => ({ products: [] as Product[], categories: [], collections: [] })),
+    ])
+      .then(([found, snapshot]) => {
         if (!active) return;
         setProduct(found);
+        setCatalogProducts(snapshot.products);
         if (found) {
           const opts = buildFallbackOptions(found);
-          setSelectedChoices(getInitialChoices(found, opts));
+          const initial = getInitialChoices(found, opts);
+          setSelectedChoices(initial);
+          recordProductView(found);
+          trackAdViewContent(found, resolveProductVariant(found, initial));
         }
         setLoading(false);
       })
@@ -122,7 +146,7 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [slug, recordProductView]);
 
   const displayOptions = useMemo(
     () => (product ? buildFallbackOptions(product) : []),
@@ -195,6 +219,15 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
       selectProductOptionWithReconciliation(syntheticProduct, prev, optionName, choiceValue)
     );
   };
+
+  const relatedRecommendations = useMemo(() => {
+    if (!product || catalogProducts.length === 0) return [];
+    return getRecommendations(catalogProducts, {
+      favoriteIds,
+      excludeIds: [product.id],
+      limit: 8,
+    }).items;
+  }, [catalogProducts, favoriteIds, getRecommendations, product]);
 
   if (loading) {
     return (
@@ -284,6 +317,9 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
   const displayedPrice = selectedVariant?.formattedPrice || product.formattedPrice;
   const displayedOriginalPrice =
     selectedVariant?.formattedOriginalPrice || product.formattedOriginalPrice;
+  const displayedDiscountPct =
+    selectedVariant?.discountPercentage ?? product.discountPercentage;
+  const favorited = isFavorite(product.id);
 
   const sanitizedDescriptionHtml = DOMPurify.sanitize(
     product.description || product.shortDescription,
@@ -370,14 +406,42 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
           {/* Módulo Contíguo de Compra Direita (Tier 3 Glass) */}
           <div className="lg:col-span-5 glass-surface-strong rounded-[28px] p-6 sm:p-8 space-y-6 lg:sticky lg:top-28">
             <div className="space-y-2 border-b border-[var(--border-hairline)] pb-5">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
-                {product.collectionName}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
+                  {product.collectionName}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(product)}
+                  aria-pressed={favorited}
+                  aria-label={
+                    favorited
+                      ? `Remover ${product.name} dos favoritos`
+                      : `Favoritar ${product.name}`
+                  }
+                  data-testid="pdp-favorite-btn"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] uppercase tracking-[0.12em] transition-all ${
+                    favorited
+                      ? 'border-[var(--accent-uv)] bg-[var(--accent-uv-glow)] text-[var(--text-primary)]'
+                      : 'border-[var(--border-hairline)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  <Heart
+                    className={`w-3.5 h-3.5 ${favorited ? 'fill-current text-[var(--accent-uv)]' : ''}`}
+                    aria-hidden="true"
+                  />
+                  <span>{favorited ? 'Salvo' : 'Favoritar'}</span>
+                </button>
+              </div>
               <h1 className="font-display font-light text-3xl sm:text-4xl uppercase tracking-[0.03em] text-[var(--text-primary)]">
                 {product.name}
               </h1>
-              <div className="flex items-baseline gap-3 tabular-nums pt-1">
-                <span className="text-xl font-medium text-[var(--text-primary)]">
+              <div className="flex flex-wrap items-baseline gap-3 tabular-nums pt-1">
+                <span
+                  className={`text-xl font-medium ${
+                    displayedDiscountPct ? 'text-[#5b7720] dark:text-[var(--accent-acid)]' : 'text-[var(--text-primary)]'
+                  }`}
+                >
                   {displayedPrice}
                 </span>
                 {displayedOriginalPrice && (
@@ -385,6 +449,11 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
                     {displayedOriginalPrice}
                   </span>
                 )}
+                {displayedDiscountPct ? (
+                  <span className="px-2 py-0.5 rounded-md border border-[var(--accent-acid)]/45 text-[11px] font-medium text-[#5b7720] dark:text-[var(--accent-acid)]">
+                    -{displayedDiscountPct}%
+                  </span>
+                ) : null}
               </div>
               {selectedVariant && !selectedVariant.inStock && (
                 <p className="text-xs text-[var(--accent-terracotta)]">
@@ -565,6 +634,17 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
           </div>
         </div>
       </div>
+
+      {relatedRecommendations.length >= 3 && (
+        <ProductCarousel
+          id="pdp-recomendados"
+          title="Você também pode atravessar"
+          subtitle="Sugestões alinhadas à sua navegação e coleção"
+          products={relatedRecommendations}
+          ctaLabel="Ver catálogo"
+          ctaHref="/loja"
+        />
+      )}
     </div>
   );
 }

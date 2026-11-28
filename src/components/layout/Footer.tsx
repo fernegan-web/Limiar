@@ -1,4 +1,5 @@
 import React from 'react';
+import { useConsent } from '../../context/ConsentContext';
 import { useRouter } from '../../context/RouterContext';
 import { LIMIAR_CHANNELS } from '../../utils/whatsapp';
 import { LimiarLogo } from '../ui/LimiarLogo';
@@ -13,6 +14,7 @@ interface FooterProps {
 
 export function Footer({ embeddedInReveal = false }: FooterProps) {
   const { navigate } = useRouter();
+  const { openPreferencesModal } = useConsent();
 
   const handleLink = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     e.preventDefault();
@@ -102,6 +104,16 @@ export function Footer({ embeddedInReveal = false }: FooterProps) {
                 <a href="/contato" onClick={(e) => handleLink(e, '/contato')} className="hover:text-[var(--text-primary)] transition-colors">
                   Trocas e suporte
                 </a>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={openPreferencesModal}
+                  data-testid="footer-privacy-btn"
+                  className="hover:text-[var(--text-primary)] transition-colors text-left"
+                >
+                  Privacidade e Cookies
+                </button>
               </li>
             </ul>
           </div>

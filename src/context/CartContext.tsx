@@ -27,8 +27,13 @@ import {
   verifyWixCheckoutReturn,
   type CheckoutReturnResult,
 } from '../services/wix/wixCheckoutService';
+import {
+  trackAdAddToCart,
+  trackVerifiedAdPurchase,
+} from '../services/analytics/adTrackingService';
 import type { CartItem, Product, ProductVariant } from '../types/commerce';
 import { useAuth } from './AuthContext';
+import { usePersonalization } from './PersonalizationContext';
 
 interface CartContextValue {
   items: CartItem[];
@@ -72,6 +77,7 @@ function cleanCheckoutReturnParamsFromUrl(): void {
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading: authLoading, authEpoch } = useAuth();
+  const { recordBehaviorEvent } = usePersonalization();
   const [items, setItems] = useState<CartItem[]>(() => loadStoredCart());
   const [wixSubtotal, setWixSubtotal] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -185,6 +191,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           );
           if (returnCheck.handled) {
             setCheckoutReturnNotice(returnCheck);
+            if (returnCheck.status === 'order-recorded') {
+              const params = new URLSearchParams(search);
+              const orderRef = params.get('orderId') || params.get('checkoutId') || undefined;
+              const { snapshot } = trackVerifiedAdPurchase(orderRef);
+              if (snapshot) {
+                for (const item of snapshot.items) {
+                  recordBehaviorEvent('purchase_verified', {
+                    product: {
+                      id: item.productId,
+                      categoryId: '',
+                      collectionSlugs: [],
+                    } as unknown as Product,
+                  });
+                }
+              }
+            }
             if (returnCheck.clearLocalCart) {
               clearStoredCart();
               setItems([]);
@@ -290,6 +312,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         variant.trackQuantity ? variant.stockCount : undefined
       );
 
+      recordBehaviorEvent('add_to_cart', { product });
+      trackAdAddToCart(product, variant, safeQty);
+
       beginMutation();
       void defaultWixCartAdapter
         .enqueue(async () => {
@@ -317,7 +342,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           endMutation();
         });
     },
-    [applyWixCartState, beginMutation, endMutation]
+    [applyWixCartState, beginMutation, endMutation, recordBehaviorEvent]
   );
 
   const removeItem = useCallback(

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Heart,
   LogOut,
   MapPin,
   MessageCircle,
@@ -16,6 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useConsent } from '../../context/ConsentContext';
+import { useFavorites } from '../../context/FavoritesContext';
 import { useRouter } from '../../context/RouterContext';
 import { THRESHOLD_EASE } from '../../motion/thresholdConfig';
 import {
@@ -52,6 +55,8 @@ interface AccountModalProps {
 export function AccountModal({ open, onClose }: AccountModalProps) {
   const { pathname, search } = useRouter();
   const { member, isAuthenticated, setAuthenticatedMember, refreshMember, logout } = useAuth();
+  const { openPreferencesModal } = useConsent();
+  const { favoriteIds } = useFavorites();
   const [mode, setMode] = useState<AuthMode>('login');
 
   // Login fields (kept strictly in transient component state; never persisted)
@@ -455,6 +460,18 @@ export function AccountModal({ open, onClose }: AccountModalProps) {
                   )}
 
                   <div className="space-y-3 pt-1">
+                    {favoriteIds.length > 0 && (
+                      <div className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)]/70 px-3.5 py-2.5 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+                        <span className="inline-flex items-center gap-2">
+                          <Heart className="w-3.5 h-3.5 text-[var(--accent-uv)]" aria-hidden="true" />
+                          <span>Peças salvas nos favoritos</span>
+                        </span>
+                        <span className="tabular-nums font-medium text-[var(--text-primary)]">
+                          {favoriteIds.length}
+                        </span>
+                      </div>
+                    )}
+
                     <ThresholdMagnetic maxPull={3} className="w-full">
                       <UltravioletButton
                         type="button"
@@ -469,6 +486,18 @@ export function AccountModal({ open, onClose }: AccountModalProps) {
                         <ExternalLink className="w-3.5 h-3.5 ml-2 opacity-75" aria-hidden="true" />
                       </UltravioletButton>
                     </ThresholdMagnetic>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        openPreferencesModal();
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-full border border-[var(--border-hairline)] px-4 py-2.5 text-xs uppercase tracking-[0.14em] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Privacidade e Histórico</span>
+                    </button>
 
                     <button
                       type="button"

@@ -1,6 +1,7 @@
 import type { collections, products } from '@wix/stores';
 import type {
   AccentTone,
+  CatalogFacetMetadata,
   CatalogQuery,
   Category,
   Collection,
@@ -90,6 +91,8 @@ function resolvePriceInfo(
   formattedPrice: string;
   originalPrice?: number;
   formattedOriginalPrice?: string;
+  discountAmount?: number;
+  discountPercentage?: number;
 } {
   const currency = priceData?.currency || legacyPrice?.currency || 'BRL';
   const basePrice = priceData?.price ?? legacyPrice?.price ?? 0;
@@ -112,12 +115,18 @@ function resolvePriceInfo(
       formatPriceByCurrency(basePrice, currency)
     : undefined;
 
+  const discountAmount = hasDiscount ? Number((basePrice - finalPrice).toFixed(2)) : undefined;
+  const rawPct = hasDiscount ? Math.round(((basePrice - finalPrice) / basePrice) * 100) : 0;
+  const discountPercentage = hasDiscount && rawPct >= 1 ? Math.min(99, rawPct) : undefined;
+
   return {
     currency,
     price: finalPrice,
     formattedPrice: formattedFinal,
     originalPrice: hasDiscount ? basePrice : undefined,
     formattedOriginalPrice: formattedOriginal,
+    discountAmount,
+    discountPercentage,
   };
 }
 
@@ -273,6 +282,7 @@ export function mapWixProductToAppProduct(
               formattedPrice: variantPriceInfo.formattedPrice,
               originalPrice: variantPriceInfo.originalPrice,
               formattedOriginalPrice: variantPriceInfo.formattedOriginalPrice,
+              discountPercentage: variantPriceInfo.discountPercentage,
               imageUrl: variantImage,
               inStock,
               trackQuantity,
@@ -291,6 +301,7 @@ export function mapWixProductToAppProduct(
             formattedPrice: productPriceInfo.formattedPrice,
             originalPrice: productPriceInfo.originalPrice,
             formattedOriginalPrice: productPriceInfo.formattedOriginalPrice,
+            discountPercentage: productPriceInfo.discountPercentage,
             imageUrl: images[0],
             inStock:
               (wixProd.stock?.inStock ?? true) &&
@@ -304,6 +315,15 @@ export function mapWixProductToAppProduct(
 
   const availableSizes = Array.from(new Set(variants.map((v) => String(v.size))));
   const availableColors = Array.from(new Set(variants.map((v) => v.colorName)));
+
+  const numericPrices = variants
+    .map((v) => v.price)
+    .filter((p): p is number => typeof p === 'number' && Number.isFinite(p) && p > 0);
+  const minPrice =
+    numericPrices.length > 0 ? Math.min(...numericPrices) : productPriceInfo.price;
+  const maxPrice =
+    numericPrices.length > 0 ? Math.max(...numericPrices) : productPriceInfo.price;
+  const hasVariablePrice = maxPrice - minPrice > 0.01;
 
   const collectionIds = (wixProd.collectionIds ?? []).filter(Boolean);
   const resolvedCollections = collectionIds
@@ -325,9 +345,36 @@ export function mapWixProductToAppProduct(
         id === '91a9bf1f-3b5f-4d4d-bbdb-a31c08cccb9a'
     );
 
+  const ribbon =
+    typeof wixProd.ribbon === 'string' && wixProd.ribbon.trim().length > 0
+      ? wixProd.ribbon.trim()
+      : undefined;
+
+  const freeShippingEligible =
+    Boolean(ribbon && /frete\s*gr[aá]tis|free\s*shipping/i.test(ribbon)) ||
+    collectionSlugs.some((slug) => {
+      const normalized = slug.toLowerCase();
+      return normalized === 'frete-gratis' || normalized === 'free-shipping';
+    });
+
+  const bestVariantDiscountPct = variants.reduce<number | undefined>((best, v) => {
+    if (!v.inStock || !v.discountPercentage) return best;
+    return best === undefined ? v.discountPercentage : Math.max(best, v.discountPercentage);
+  }, undefined);
+
+  const resolvedDiscountPercentage =
+    productPriceInfo.discountPercentage ?? bestVariantDiscountPct;
+
   const rawDescription = typeof wixProd.description === 'string' ? wixProd.description : '';
   const plainSummary = stripHtmlToPlainText(rawDescription, 140);
   const productInStock = variants.some((v) => v.inStock);
+  const lastUpdatedRaw = (wixProd as unknown as { lastUpdated?: string | Date }).lastUpdated;
+  const lastUpdated =
+    lastUpdatedRaw instanceof Date
+      ? lastUpdatedRaw.toISOString()
+      : typeof lastUpdatedRaw === 'string'
+        ? lastUpdatedRaw
+        : undefined;
 
   return {
     id: wixProd._id || '',
@@ -338,6 +385,19 @@ export function mapWixProductToAppProduct(
     formattedPrice: productPriceInfo.formattedPrice,
     originalPrice: productPriceInfo.originalPrice,
     formattedOriginalPrice: productPriceInfo.formattedOriginalPrice,
+    discountAmount: productPriceInfo.discountAmount,
+    discountPercentage: resolvedDiscountPercentage,
+    minPrice,
+    maxPrice,
+    hasVariablePrice,
+    ribbon,
+    sku: wixProd.sku || variants.find((v) => v.sku)?.sku || undefined,
+    numericId:
+      typeof wixProd.numericId === 'string' && wixProd.numericId.trim()
+        ? wixProd.numericId.trim()
+        : undefined,
+    freeShippingEligible,
+    lastUpdated,
     categoryId: primaryCollection?._id || collectionIds[0] || 'all-products',
     categoryName: primaryCollection?.name || 'Catálogo',
     collectionSlug: primaryCollection?.slug || collectionSlugs[0] || ALL_PRODUCTS_COLLECTION_SLUG,
@@ -352,7 +412,7 @@ export function mapWixProductToAppProduct(
     composition: 'Confira a descrição completa da peça para especificações de tecido e gramatura.',
     careInstructions: 'Lavar à mão ou ciclo delicado. Não alvejar. Secar à sombra.',
     accentTone: isFeatured ? 'uv' : 'acid',
-    statusTag: isFeatured ? 'DESTAQUE' : undefined,
+    statusTag: ribbon || (isFeatured ? 'DESTAQUE' : undefined),
     images,
     options,
     variants,
@@ -454,6 +514,123 @@ export function selectProductOptionWithReconciliation(
   return next;
 }
 
+export function isSizeOptionName(name: string): boolean {
+  return /tamanh|size|medid|comprim|numera/i.test(name);
+}
+
+const LETTER_SIZE_ORDER: Record<string, number> = {
+  PP: 1,
+  XS: 1,
+  P: 2,
+  S: 2,
+  M: 3,
+  G: 4,
+  L: 4,
+  GG: 5,
+  XL: 5,
+  XG: 6,
+  XXL: 6,
+  XXG: 7,
+  ÚNICO: 99,
+  UNICO: 99,
+};
+
+export function compareCatalogSizes(a: string, b: string): number {
+  const ua = a.trim().toUpperCase();
+  const ub = b.trim().toUpperCase();
+  const la = LETTER_SIZE_ORDER[ua];
+  const lb = LETTER_SIZE_ORDER[ub];
+  if (la !== undefined && lb !== undefined) return la - lb;
+  if (la !== undefined) return -1;
+  if (lb !== undefined) return 1;
+
+  const na = Number.parseFloat(ua.replace(',', '.'));
+  const nb = Number.parseFloat(ub.replace(',', '.'));
+  if (!Number.isNaN(na) && !Number.isNaN(nb)) {
+    return na - nb;
+  }
+  return a.localeCompare(b, 'pt-BR', { numeric: true });
+}
+
+export function extractCatalogFacetMetadata(productsList: Product[]): CatalogFacetMetadata {
+  const sizeSet = new Set<string>();
+  let minBound = Number.POSITIVE_INFINITY;
+  let maxBound = 0;
+  let offersCount = 0;
+  let freeShippingCount = 0;
+
+  for (const product of productsList) {
+    const low = product.minPrice ?? product.price;
+    const high = product.maxPrice ?? product.price;
+    if (Number.isFinite(low) && low > 0) minBound = Math.min(minBound, low);
+    if (Number.isFinite(high) && high > 0) maxBound = Math.max(maxBound, high);
+    if (product.discountPercentage && product.discountPercentage > 0) offersCount += 1;
+    if (product.freeShippingEligible) freeShippingCount += 1;
+
+    // Coleta tamanhos reais em estoque nas opções e variantes do catálogo
+    const fromOptions = (product.options ?? []).filter((opt) => isSizeOptionName(opt.name));
+    if (fromOptions.length > 0) {
+      for (const opt of fromOptions) {
+        for (const choice of opt.choices) {
+          if (!choice.visible) continue;
+          const label = (choice.description || choice.value || '').trim();
+          if (label) sizeSet.add(label);
+        }
+      }
+    } else {
+      for (const variant of product.variants) {
+        const s = String(variant.size || '').trim();
+        if (s && s !== 'Único') {
+          sizeSet.add(s);
+        }
+      }
+    }
+  }
+
+  return {
+    availableSizes: Array.from(sizeSet).sort(compareCatalogSizes),
+    minPriceBound: Number.isFinite(minBound) ? Math.floor(minBound) : 0,
+    maxPriceBound: maxBound > 0 ? Math.ceil(maxBound) : 0,
+    offersCount,
+    freeShippingCount,
+    totalCount: productsList.length,
+  };
+}
+
+export function searchCatalogSuggestions(
+  productsList: Product[],
+  rawQuery: string,
+  limit = 6
+): Product[] {
+  const term = rawQuery.trim().toLowerCase();
+  if (!term) return [];
+
+  const scored: Array<{ product: Product; score: number }> = [];
+  for (const p of productsList) {
+    const nameLower = p.name.toLowerCase();
+    const catLower = p.categoryName.toLowerCase();
+    const colLower = p.collectionName.toLowerCase();
+    const descLower = p.shortDescription.toLowerCase();
+    const skuLower = (p.sku || '').toLowerCase();
+
+    let score = 0;
+    if (nameLower.startsWith(term)) score += 120;
+    else if (nameLower.includes(term)) score += 85;
+    if (catLower.includes(term) || colLower.includes(term)) score += 45;
+    if (skuLower && skuLower.includes(term)) score += 40;
+    if (descLower.includes(term)) score += 20;
+
+    if (score > 0) {
+      if (p.inStock !== false) score += 8;
+      if (p.featured) score += 4;
+      scored.push({ product: p, score });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name, 'pt-BR'));
+  return scored.slice(0, Math.max(1, limit)).map((entry) => entry.product);
+}
+
 /**
  * Filtros e ordenação aplicados sobre os produtos reais consultados no Wix.
  */
@@ -481,17 +658,39 @@ export function filterAndSortProducts(productsList: Product[], query: CatalogQue
     );
   }
 
-  if (query.size) {
-    const targetSize = query.size.toUpperCase();
+  if (query.size && query.size.trim().length > 0) {
+    const targetSize = query.size.trim().toUpperCase();
     result = result.filter((p) =>
       p.variants.some((variant) => {
         if (!variant.inStock) return false;
-        if (String(variant.size).toUpperCase() === targetSize) return true;
+        if (String(variant.size).trim().toUpperCase() === targetSize) return true;
         return Object.values(variant.choices ?? {}).some(
           (val) => val.trim().toUpperCase() === targetSize
         );
       })
     );
+  }
+
+  if (typeof query.minPrice === 'number' && Number.isFinite(query.minPrice) && query.minPrice > 0) {
+    const minP = query.minPrice;
+    result = result.filter((p) => (p.maxPrice ?? p.price) >= minP);
+  }
+
+  if (typeof query.maxPrice === 'number' && Number.isFinite(query.maxPrice) && query.maxPrice > 0) {
+    const maxP = query.maxPrice;
+    result = result.filter((p) => (p.minPrice ?? p.price) <= maxP);
+  }
+
+  if (query.onlyOffers) {
+    result = result.filter((p) => Boolean(p.discountPercentage && p.discountPercentage > 0));
+  }
+
+  if (query.freeShippingOnly) {
+    result = result.filter((p) => Boolean(p.freeShippingEligible));
+  }
+
+  if (query.inStockOnly) {
+    result = result.filter((p) => p.inStock !== false);
   }
 
   if (query.search && query.search.trim().length > 0) {
@@ -501,11 +700,19 @@ export function filterAndSortProducts(productsList: Product[], query: CatalogQue
         p.name.toLowerCase().includes(term) ||
         p.categoryName.toLowerCase().includes(term) ||
         p.collectionName.toLowerCase().includes(term) ||
-        p.shortDescription.toLowerCase().includes(term)
+        p.shortDescription.toLowerCase().includes(term) ||
+        (p.sku ? p.sku.toLowerCase().includes(term) : false)
     );
   }
 
   switch (query.sort) {
+    case 'discount-desc':
+      result.sort(
+        (a, b) =>
+          (b.discountPercentage ?? 0) - (a.discountPercentage ?? 0) ||
+          a.price - b.price
+      );
+      break;
     case 'price-asc':
       result.sort((a, b) => a.price - b.price);
       break;
@@ -515,9 +722,21 @@ export function filterAndSortProducts(productsList: Product[], query: CatalogQue
     case 'name-asc':
       result.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
       break;
+    case 'newest':
+      result.sort((a, b) => {
+        const ta = a.lastUpdated ? Date.parse(a.lastUpdated) : 0;
+        const tb = b.lastUpdated ? Date.parse(b.lastUpdated) : 0;
+        return tb - ta;
+      });
+      break;
     case 'featured':
     default:
-      result.sort((a, b) => Number(b.featured) - Number(a.featured));
+      result.sort(
+        (a, b) =>
+          Number(b.inStock !== false) - Number(a.inStock !== false) ||
+          Number(b.featured) - Number(a.featured) ||
+          (b.discountPercentage ?? 0) - (a.discountPercentage ?? 0)
+      );
       break;
   }
 
@@ -652,7 +871,16 @@ async function loadCatalogSnapshot(): Promise<{
         if (col._id) collectionsById.set(col._id, col);
       }
 
-      const mappedProducts = rawProducts.map((p) =>
+      const dedupedRawProducts: products.Product[] = [];
+      const seenIds = new Set<string>();
+      for (const p of rawProducts) {
+        const pid = p._id || '';
+        if (pid && seenIds.has(pid)) continue;
+        if (pid) seenIds.add(pid);
+        dedupedRawProducts.push(p);
+      }
+
+      const mappedProducts = dedupedRawProducts.map((p) =>
         mapWixProductToAppProduct(p, collectionsById)
       );
       const { categories, collections: mappedCollections } =
@@ -675,6 +903,14 @@ async function loadCatalogSnapshot(): Promise<{
   })();
 
   return inFlightCatalogLoad;
+}
+
+export async function fetchCatalogSnapshot(): Promise<{
+  products: Product[];
+  categories: Category[];
+  collections: Collection[];
+}> {
+  return loadCatalogSnapshot();
 }
 
 /**

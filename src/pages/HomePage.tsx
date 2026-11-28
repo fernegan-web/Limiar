@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Compass, Infinity as InfinityIcon, Leaf, RefreshCw, ShieldCheck, Truck } from 'lucide-react';
-import { ProductCard } from '../components/commerce/ProductCard';
+import { AuthorialBanner } from '../components/commerce/AuthorialBanner';
+import { CatalogExplorer } from '../components/commerce/CatalogExplorer';
+import { ProductCarousel } from '../components/commerce/ProductCarousel';
 import { HeroTraversalStage } from '../components/hero/HeroTraversalStage';
 import { Footer } from '../components/layout/Footer';
 import { SobreLimiarSection } from '../components/sobre/SobreLimiarSection';
@@ -14,16 +16,16 @@ import {
 import { CinematicScrollReveal } from '../components/ui/CinematicScrollReveal';
 import { ResilientImage } from '../components/ui/ResilientImage';
 import { UltravioletButton } from '../components/ui/UltravioletButton';
+import { useFavorites } from '../context/FavoritesContext';
+import { usePersonalization } from '../context/PersonalizationContext';
 import { useRouter } from '../context/RouterContext';
+import { AUTHORIAL_BANNERS } from '../data/authorialBanners';
+import { DEMO_IMAGES } from '../data/demoCatalog';
 import { scrollToWithPhysics } from '../motion/scrollPhysics';
 import { ThresholdScrollParallax } from '../motion/ThresholdPrimitives';
 import {
-  DEMO_IMAGES,
-} from '../data/demoCatalog';
-import {
-  fetchCategories,
-  fetchCollections,
-  fetchFeaturedProducts,
+  fetchCatalogSnapshot,
+  filterAndSortProducts,
   invalidateCatalogCache,
 } from '../services/catalogService';
 import type { Category, Collection, Product } from '../types/commerce';
@@ -56,7 +58,10 @@ const HERO_SLIDES: HeroSlide[] = [
 
 export function HomePage() {
   const { navigate } = useRouter();
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const { favoriteIds } = useFavorites();
+  const { getRecommendations } = usePersonalization();
+
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -76,14 +81,10 @@ export function HomePage() {
       invalidateCatalogCache();
     }
     try {
-      const [products, cats, cols] = await Promise.all([
-        fetchFeaturedProducts(),
-        fetchCategories(),
-        fetchCollections(),
-      ]);
-      setFeaturedProducts(products);
-      setCategories(cats);
-      setCollections(cols);
+      const snapshot = await fetchCatalogSnapshot();
+      setAllProducts(snapshot.products);
+      setCategories(snapshot.categories);
+      setCollections(snapshot.collections);
     } catch {
       setCatalogError('Não foi possível carregar o catálogo oficial no momento.');
     } finally {
@@ -94,6 +95,45 @@ export function HomePage() {
   useEffect(() => {
     loadHomeCatalog();
   }, [loadHomeCatalog]);
+
+  const offerProducts = useMemo(
+    () =>
+      filterAndSortProducts(allProducts, {
+        onlyOffers: true,
+        inStockOnly: true,
+        sort: 'discount-desc',
+      }).slice(0, 10),
+    [allProducts]
+  );
+
+  const recommendationResult = useMemo(() => {
+    if (allProducts.length === 0) {
+      return { items: [], isPersonalized: false, recentlyViewed: [] };
+    }
+    const leadOfferIds = offerProducts.slice(0, 6).map((p) => p.id);
+    const primary = getRecommendations(allProducts, {
+      favoriteIds,
+      excludeIds: leadOfferIds,
+      limit: 10,
+    });
+    if (primary.items.length >= 3) {
+      return primary;
+    }
+    return getRecommendations(allProducts, {
+      favoriteIds,
+      limit: 10,
+    });
+  }, [allProducts, favoriteIds, getRecommendations, offerProducts]);
+
+  const freeShippingProducts = useMemo(
+    () =>
+      filterAndSortProducts(allProducts, {
+        freeShippingOnly: true,
+        inStockOnly: true,
+        sort: 'featured',
+      }).slice(0, 10),
+    [allProducts]
+  );
 
   const currentSlide = HERO_SLIDES[activeSlideIndex];
 
@@ -119,97 +159,73 @@ export function HomePage() {
 
   const postCollectionsContent = (
     <>
-      {/* 1. Divisor Neotribal Sutil entre Coleções e Todos os Produtos */}
+      {/* 1. Divisor Neotribal Sutil entre Coleções e Área Comercial */}
       <CinematicScrollReveal
         startY={22}
         startScale={0.97}
         startBlur={6}
-        className="mx-auto max-w-[1360px] px-4 sm:px-8 pt-6"
+        className="mx-auto max-w-[1440px] px-4 sm:px-8 pt-6"
       >
         <CybersigilismDivider className="w-full max-w-2xl mx-auto opacity-75" />
       </CinematicScrollReveal>
 
-      {/* 2. TODOS OS PRODUTOS (DESTAQUES DO CATÁLOGO) */}
-      <section
+      {/* 2. CARROSSÉIS ESTRATÉGICOS (mínimo de 3 itens elegíveis cada; sem poluição) */}
+      {!catalogLoading && !catalogError && (
+        <>
+          <ProductCarousel
+            id="carrossel-ofertas"
+            title="Ofertas"
+            subtitle="Peças com desconto ativo no catálogo oficial"
+            products={offerProducts}
+            ctaLabel="Ver ofertas"
+            ctaHref="/loja?ofertas=1&sort=discount-desc"
+          />
+
+          <ProductCarousel
+            id="carrossel-recomendados"
+            title="Recomendados para você"
+            subtitle={
+              recommendationResult.isPersonalized
+                ? 'Selecionados conforme sua navegação e peças salvas'
+                : 'Destaques e lançamentos em evidência na travessia'
+            }
+            products={recommendationResult.items}
+            ctaLabel="Explorar loja"
+            ctaHref="/loja"
+          />
+
+          <ProductCarousel
+            id="carrossel-frete-gratis"
+            title="Frete grátis"
+            subtitle="Peças elegíveis com benefício de entrega gratuita na Wix"
+            products={freeShippingProducts}
+            ctaLabel="Ver elegíveis"
+            ctaHref="/loja?fretegratis=1"
+          />
+        </>
+      )}
+
+      {/* 3. BANNERS AUTORAIS (exibidos somente quando houver artes configuradas) */}
+      {AUTHORIAL_BANNERS.map((banner) => (
+        <AuthorialBanner key={banner.id} banner={banner} />
+      ))}
+
+      {/* 4. CATÁLOGO PRINCIPAL UNIFICADO — BUSCA, FILTROS REAIS E GRADE 4-5 COLUNAS / 2 MOBILE */}
+      <CatalogExplorer
         id="todos-os-produtos"
-        className="scroll-mt-24 relative mx-auto max-w-[1360px] px-4 sm:px-8 py-12 sm:py-16"
-      >
-        <CinematicScrollReveal startY={28} startScale={0.97} startBlur={8}>
-          <div className="flex items-center justify-between gap-4 mb-8">
-            <div className="flex items-center gap-4 flex-1 min-w-0">
-              <LimiarStar className="w-4 h-4 text-[var(--accent-uv)] shrink-0 opacity-80" />
-              <h2 className="font-display text-xs sm:text-[13px] uppercase tracking-[0.22em] font-medium text-[var(--text-primary)] whitespace-nowrap">
-                TODOS OS PRODUTOS
-              </h2>
-              <div className="hidden sm:block h-[1px] flex-1 bg-[var(--border-hairline)]" />
-            </div>
-            <a
-              href="/loja"
-              onClick={(e) => {
-                e.preventDefault();
-                navigate('/loja');
-              }}
-              className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] whitespace-nowrap shrink-0 transition-colors"
-            >
-              <span>VER TODAS</span>
-              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-            </a>
-          </div>
-        </CinematicScrollReveal>
+        heading="TODOS OS PRODUTOS"
+        ctaLink={{ label: 'VER TODAS NA LOJA', href: '/loja' }}
+        allProducts={allProducts}
+        categories={categories}
+        collections={collections}
+        loading={catalogLoading}
+        error={catalogError}
+        onRetry={() => loadHomeCatalog(true)}
+        pageSize={15}
+      />
 
-        {catalogError ? (
-          <div
-            role="alert"
-            className="glass-surface rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-          >
-            <p className="text-sm text-[var(--accent-terracotta)]">{catalogError}</p>
-            <button
-              type="button"
-              onClick={() => loadHomeCatalog(true)}
-              className="px-4 py-2 rounded-full border border-[var(--border-strong)] text-xs uppercase tracking-[0.14em] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        ) : catalogLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6" aria-busy="true">
-            {Array.from({ length: 4 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="glass-card rounded-[22px] p-3.5 space-y-4 animate-pulse"
-              >
-                <div className="aspect-[3/4] w-full rounded-[15px] bg-[var(--bg-card-media)]" />
-                <div className="space-y-2 px-1">
-                  <div className="h-3 w-20 rounded bg-[var(--border-hairline)]" />
-                  <div className="h-4 w-32 rounded bg-[var(--border-hairline)]" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : featuredProducts.length === 0 ? (
-          <div className="glass-surface rounded-2xl p-8 text-center text-sm text-[var(--text-muted)]">
-            Nenhuma peça disponível no catálogo no momento.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
-            {featuredProducts.map((product, index) => (
-              <CinematicScrollReveal
-                key={product.id}
-                staggerIndex={index}
-                staggerStep={0.1}
-                startY={40}
-                startScale={0.93}
-                startBlur={10}
-              >
-                <ProductCard product={product} />
-              </CinematicScrollReveal>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* 3. NAVEGAÇÃO POR CATEGORIAS */}
-      <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-8">
+      {/* 5. NAVEGAÇÃO RÁPIDA POR CATEGORIAS */}
+      <section className="relative mx-auto max-w-[1440px] px-4 sm:px-8 py-6">
         <CinematicScrollReveal startY={34} startScale={0.95} startBlur={8}>
           <div className="glass-surface rounded-[22px] p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-5">
             <div className="flex items-center gap-3">
@@ -250,21 +266,19 @@ export function HomePage() {
         </CinematicScrollReveal>
       </section>
 
-      {/* 4. BANNER INSTITUCIONAL */}
-      <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-10 sm:py-14">
+      {/* 6. BANNER INSTITUCIONAL */}
+      <section className="relative mx-auto max-w-[1440px] px-4 sm:px-8 py-10 sm:py-12">
         <CinematicScrollReveal startY={38} startScale={0.94} startBlur={10}>
           <div className="relative overflow-hidden rounded-[28px] glass-card min-h-[360px] sm:min-h-[400px] flex items-center">
-            {/* Imagem atmosférica de fundo com parallax no scroll */}
             <ThresholdScrollParallax offsetY={20} scaleRange={[1.07, 1.01]} className="absolute inset-0">
               <ResilientImage
                 src={DEMO_IMAGES.bannerEclipse}
                 alt="Eclipse sobre atmosfera underground Limiar"
-                sizes="(max-width: 1024px) 100vw, 1360px"
+                sizes="(max-width: 1024px) 100vw, 1440px"
                 loading="lazy"
                 className="w-full h-full object-cover object-[65%_22%] opacity-78 dark:opacity-85"
               />
             </ThresholdScrollParallax>
-            {/* Scrim controlado para legibilidade garantida nos dois temas */}
             <div
               aria-hidden="true"
               className="absolute inset-0 bg-gradient-to-r from-[var(--bg-elevated)] via-[var(--bg-elevated)]/88 to-[var(--bg-elevated)]/22 dark:from-[#080909] dark:via-[#080909]/84 dark:to-transparent"
@@ -294,8 +308,8 @@ export function HomePage() {
         </CinematicScrollReveal>
       </section>
 
-      {/* 5. BENEFÍCIOS DA LOJA */}
-      <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-8">
+      {/* 7. BENEFÍCIOS DA LOJA */}
+      <section className="relative mx-auto max-w-[1440px] px-4 sm:px-8 py-8">
         <CinematicScrollReveal startY={32} startScale={0.96} startBlur={8}>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 py-8 border-y border-[var(--border-hairline)]">
             {[
@@ -325,8 +339,8 @@ export function HomePage() {
         </CinematicScrollReveal>
       </section>
 
-      {/* 6. NEWSLETTER */}
-      <section className="relative mx-auto max-w-[1360px] px-4 sm:px-8 py-10">
+      {/* 8. NEWSLETTER */}
+      <section className="relative mx-auto max-w-[1440px] px-4 sm:px-8 py-10">
         <CinematicScrollReveal
           startY={34}
           startScale={0.95}
@@ -403,9 +417,6 @@ export function HomePage() {
 
   return (
     <div className="relative overflow-x-clip">
-      {/* ================================================================
-          CAPÍTULO 01: HERO PROCEDURAL + TRAVESSIA + COLEÇÕES + CATÁLOGO
-          ================================================================ */}
       <HeroTraversalStage
         slide={currentSlide}
         activeSlideIndex={activeSlideIndex}
@@ -416,10 +427,6 @@ export function HomePage() {
         postCollectionsContent={postCollectionsContent}
       />
 
-      {/* ================================================================
-          CAPÍTULO 02: SEÇÃO INSTITUCIONAL — SOBRE A LIMIAR + RODAPÉ
-          Liberados exclusivamente no Estado D (free-navigation)
-          ================================================================ */}
       <div className={freeNavUnlocked ? 'block' : 'hidden'}>
         <SobreLimiarSection />
 

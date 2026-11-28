@@ -4,6 +4,7 @@ import { MessageCircle, Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react
 import { useCart } from '../../context/CartContext';
 import { useRouter } from '../../context/RouterContext';
 import { THRESHOLD_DURATIONS, THRESHOLD_EASE, THRESHOLD_SPRING } from '../../motion/thresholdConfig';
+import { trackAdInitiateCheckout } from '../../services/analytics/adTrackingService';
 import { formatCartVariantLabel } from '../../services/cartService';
 import { getWixIntegrationStatus } from '../../services/wix/wixClient';
 import { proceedToWixCheckout } from '../../services/wix/wixCheckoutService';
@@ -305,6 +306,7 @@ export function CartDrawer() {
                           setCheckingOut(true);
                           setCheckoutError(null);
                           clearCartError();
+                          trackAdInitiateCheckout(items, subtotal);
                           const res = await proceedToWixCheckout(items);
                           if (!res.success) {
                             setCheckoutError(res.message || 'Erro ao iniciar checkout.');

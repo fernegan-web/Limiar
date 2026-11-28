@@ -2,7 +2,13 @@ export type AccentTone = 'acid' | 'uv' | 'terracotta' | 'mineral' | 'neutral';
 
 export type ProductSize = 'P' | 'M' | 'G' | 'GG' | 'XG' | 'Único';
 
-export type SortOption = 'featured' | 'price-asc' | 'price-desc' | 'name-asc';
+export type SortOption =
+  | 'featured'
+  | 'discount-desc'
+  | 'price-asc'
+  | 'price-desc'
+  | 'name-asc'
+  | 'newest';
 
 export interface ProductOptionChoice {
   value: string;
@@ -28,6 +34,7 @@ export interface ProductVariant {
   formattedPrice?: string;
   originalPrice?: number;
   formattedOriginalPrice?: string;
+  discountPercentage?: number;
   imageUrl?: string;
   inStock: boolean;
   trackQuantity?: boolean;
@@ -44,6 +51,16 @@ export interface Product {
   formattedPrice: string;
   originalPrice?: number;
   formattedOriginalPrice?: string;
+  discountAmount?: number;
+  discountPercentage?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  hasVariablePrice?: boolean;
+  ribbon?: string;
+  sku?: string;
+  numericId?: string;
+  freeShippingEligible?: boolean;
+  lastUpdated?: string;
   categoryId: string;
   categoryName: string;
   collectionSlug: string;
@@ -93,7 +110,21 @@ export interface CatalogQuery {
   collection?: string;
   search?: string;
   size?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  onlyOffers?: boolean;
+  freeShippingOnly?: boolean;
+  inStockOnly?: boolean;
   sort?: SortOption;
+}
+
+export interface CatalogFacetMetadata {
+  availableSizes: string[];
+  minPriceBound: number;
+  maxPriceBound: number;
+  offersCount: number;
+  freeShippingCount: number;
+  totalCount: number;
 }
 
 export interface CartItem {
@@ -113,6 +144,8 @@ export interface CartItem {
   quantity: number;
   inStock?: boolean;
   stockCount?: number;
+  sku?: string;
+  categoryName?: string;
 }
 
 export interface CartState {

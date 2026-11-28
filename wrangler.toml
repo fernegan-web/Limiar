@@ -1,0 +1,16 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "limiar-store"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-05-01"
+
+# Binding do banco Cloudflare D1 para histórico autenticado, favoritos e consentimento LGPD.
+# Antes do deploy em produção, crie o banco via:
+#   npx wrangler d1 create limiar-personalization
+# e substitua o database_id abaixo pelo ID real retornado pela Cloudflare.
+# Aplique a migração com:
+#   npx wrangler d1 migrations apply limiar-personalization --remote
+[[d1_databases]]
+binding = "DB"
+database_name = "limiar-personalization"
+database_id = "REPLACE_WITH_YOUR_CLOUDFLARE_D1_DATABASE_ID"
+migrations_dir = "migrations"

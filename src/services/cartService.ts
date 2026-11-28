@@ -68,6 +68,8 @@ export function addItemToCartList(
       quantity: safeQty,
       inStock: variant.inStock,
       stockCount: stockCap,
+      sku: variant.sku || product.sku,
+      categoryName: product.categoryName,
     },
   ];
 }

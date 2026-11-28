@@ -2,10 +2,15 @@ import React, { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } f
 import { Footer } from './components/layout/Footer';
 import { Navbar } from './components/layout/Navbar';
 import { NeotribalGlobalBackground } from './components/ornaments/NeotribalGlobalBackground';
+import { ConsentBanner } from './components/privacy/ConsentBanner';
+import { PrivacyPreferencesModal } from './components/privacy/PrivacyPreferencesModal';
 import { OrbitalCursor } from './components/ui/OrbitalCursor';
 import { WhatsAppFloatingButton } from './components/ui/WhatsAppFloatingButton';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider, useCart } from './context/CartContext';
+import { ConsentProvider, useConsent } from './context/ConsentContext';
+import { FavoritesProvider } from './context/FavoritesContext';
+import { PersonalizationProvider } from './context/PersonalizationContext';
 import { RouterProvider, useRouter } from './context/RouterContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { InternalPortalIntroOverlay } from './components/intro/InternalPortalIntroOverlay';
@@ -16,6 +21,7 @@ import {
   useThresholdPointer,
 } from './motion/ThresholdMotionProvider';
 import { HomePage } from './pages/HomePage';
+import { trackAdPageView } from './services/analytics/adTrackingService';
 import { validateAndLogWixCatalogConnection } from './services/wix/wixProductsService';
 
 const CatalogPage = lazy(() =>
@@ -56,6 +62,8 @@ function AppShell() {
     getLatestIntroFrame,
   } = useThresholdPointer();
   const { isDrawerOpen, items, checkoutReturnNotice, clearCheckoutReturnNotice } = useCart();
+  const { hasConsent } = useConsent();
+  const marketingAllowed = hasConsent('marketing');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMounted, setSearchMounted] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -134,6 +142,12 @@ function AppShell() {
       document.documentElement.dataset.scrollLocked = 'false';
     };
   }, [searchOpen, accountOpen, isDrawerOpen]);
+
+  // PageView consentido para Meta Ads / TikTok Ads em navegação SPA
+  useEffect(() => {
+    if (!marketingAllowed) return;
+    trackAdPageView();
+  }, [marketingAllowed, pathname]);
 
   // Validação e log da conexão real com o backend Wix Stores (apenas em desenvolvimento)
   useEffect(() => {
@@ -246,6 +260,8 @@ function AppShell() {
         </Suspense>
       )}
       <WhatsAppFloatingButton hidden={introActive || searchOpen || accountOpen || isDrawerOpen} />
+      <ConsentBanner />
+      <PrivacyPreferencesModal />
       <OrbitalCursor />
       {introActive && introVariant === 'portal-expand' && <InternalPortalIntroOverlay />}
     </div>
@@ -258,9 +274,15 @@ export default function App() {
       <ThresholdMotionProvider>
         <RouterProvider>
           <AuthProvider>
-            <CartProvider>
-              <AppShell />
-            </CartProvider>
+            <ConsentProvider>
+              <PersonalizationProvider>
+                <FavoritesProvider>
+                  <CartProvider>
+                    <AppShell />
+                  </CartProvider>
+                </FavoritesProvider>
+              </PersonalizationProvider>
+            </ConsentProvider>
           </AuthProvider>
         </RouterProvider>
       </ThresholdMotionProvider>

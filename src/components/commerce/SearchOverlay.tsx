@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Search, X } from 'lucide-react';
+import { usePersonalization } from '../../context/PersonalizationContext';
 import { useRouter } from '../../context/RouterContext';
 import { THRESHOLD_EASE } from '../../motion/thresholdConfig';
-import { fetchProducts } from '../../services/catalogService';
+import { trackAdSearch } from '../../services/analytics/adTrackingService';
+import { fetchCatalogSnapshot, searchCatalogSuggestions } from '../../services/catalogService';
 import type { Product } from '../../types/commerce';
 import { ResilientImage } from '../ui/ResilientImage';
 
@@ -14,19 +16,41 @@ interface SearchOverlayProps {
 
 export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
   const [query, setQuery] = useState('');
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [results, setResults] = useState<Product[]>([]);
   const { navigate } = useRouter();
+  const { recordSearchQuery } = usePersonalization();
+  const lastTrackedRef = useRef('');
 
   useEffect(() => {
     if (!open) return;
     let active = true;
-    fetchProducts({ search: query }).then((list) => {
-      if (active) setResults(list);
+    fetchCatalogSnapshot().then((snapshot) => {
+      if (active) setAllProducts(snapshot.products);
     });
     return () => {
       active = false;
     };
-  }, [query, open]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setResults(allProducts.slice(0, 8));
+      return;
+    }
+    setResults(searchCatalogSuggestions(allProducts, trimmed, 10));
+
+    const timer = window.setTimeout(() => {
+      if (trimmed.length >= 2 && trimmed.toLowerCase() !== lastTrackedRef.current) {
+        lastTrackedRef.current = trimmed.toLowerCase();
+        recordSearchQuery(trimmed);
+        trackAdSearch(trimmed);
+      }
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [allProducts, open, query, recordSearchQuery]);
 
   useEffect(() => {
     if (!open) return;
@@ -39,8 +63,13 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmed = query.trim();
+    if (trimmed.length >= 2) {
+      recordSearchQuery(trimmed);
+      trackAdSearch(trimmed);
+    }
     onClose();
-    navigate(query.trim() ? `/loja?busca=${encodeURIComponent(query.trim())}` : '/loja');
+    navigate(trimmed ? `/loja?busca=${encodeURIComponent(trimmed)}` : '/loja');
   };
 
   return (
@@ -124,9 +153,22 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
                         {product.categoryName} · {product.collectionName}
                       </p>
                     </div>
-                    <span className="text-sm text-[var(--text-secondary)] tabular-nums shrink-0">
-                      {product.formattedPrice}
-                    </span>
+                    <div className="text-right shrink-0 tabular-nums">
+                      {product.discountPercentage && product.formattedOriginalPrice ? (
+                        <span className="block text-[11px] text-[var(--text-muted)] line-through">
+                          {product.formattedOriginalPrice}
+                        </span>
+                      ) : null}
+                      <span
+                        className={`text-sm ${
+                          product.discountPercentage
+                            ? 'text-[var(--accent-acid)] font-medium'
+                            : 'text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        {product.formattedPrice}
+                      </span>
+                    </div>
                   </a>
                 ))
               )}
